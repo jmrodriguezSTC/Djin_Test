@@ -5,19 +5,17 @@ import logging
 import configparser
 import os
 
-# --- Configuración inicial ---
-# Lee la configuración desde el archivo config.ini
-config = configparser.ConfigParser()
-try:
-    config.read('config.ini')
-    intervalo_monitoreo = config.getint('AGENTE', 'intervalo_monitoreo', fallback=5)
-    nombre_archivo_log = config.get('AGENTE', 'nombre_archivo_log', fallback='monitoreo.log')
-except Exception as e:
-    print(f"Error al leer el archivo de configuración. Usando valores por defecto. Error: {e}")
-    intervalo_monitoreo = 5
-    nombre_archivo_log = 'monitoreo.log'
-
+# --- Configuración inicial del logger ---
 # Configura el logger para escribir en un archivo y en la consola
+# Esta parte se queda fuera del bucle porque no debe re-configurarse
+config_logger = configparser.ConfigParser()
+try:
+    config_logger.read('config.ini')
+    nombre_archivo_log = config_logger.get('AGENTE', 'nombre_archivo_log', fallback='monitoreo.log')
+except Exception as e:
+    print(f"Error al leer el nombre del archivo de log. Usando valor por defecto. Error: {e}")
+    nombre_archivo_log = 'monitoreo.log'
+    
 ruta_log = os.path.join(os.getcwd(), nombre_archivo_log)
 logging.basicConfig(
     level=logging.INFO,
@@ -79,11 +77,10 @@ def obtener_metricas_wmi():
             metricas_wmi['estado_servicio_spooler'] = service.State
             
         # Ejemplo: Obtener información de la tarjeta de red
-        # Usamos Win32_NetworkAdapterConfiguration para obtener la configuración IP
         for interface in c.Win32_NetworkAdapterConfiguration(IPEnabled=True):
             metricas_wmi['tarjeta_red_descripcion'] = interface.Description
             metricas_wmi['tarjeta_red_ip'] = interface.IPAddress[0] if interface.IPAddress else "N/A"
-            break # Solo tomamos la primera interfaz
+            break
         
         # Ejemplo: Obtener el estado de la batería (solo para laptops)
         try:
@@ -95,8 +92,7 @@ def obtener_metricas_wmi():
             metricas_wmi['bateria_porcentaje'] = "N/A"
             metricas_wmi['bateria_estado'] = "N/A"
             
-        # Ejemplo: Obtener la temperatura de la CPU (requiere permisos de administrador y no siempre está disponible)
-        # La clase Win32_TemperatureProbe no es compatible con todos los sistemas.
+        # Ejemplo: Obtener la temperatura de la CPU
         try:
             for temp_sensor in c.Win32_TemperatureProbe():
                 metricas_wmi['cpu_temperatura_celsius'] = temp_sensor.CurrentReading / 10
@@ -110,36 +106,71 @@ def obtener_metricas_wmi():
         
     return metricas_wmi
 
+def obtener_lista_procesos():
+    """
+    Lista los procesos en ejecución y retorna su nombre y PID.
+    """
+    procesos = []
+    try:
+        for proc in psutil.process_iter(['pid', 'name']):
+            procesos.append({'pid': proc.pid, 'name': proc.name()})
+    except Exception as e:
+        logging.error(f"Error al listar procesos: {e}")
+    return procesos
+
 def main():
     """
     Función principal del agente de monitoreo.
     """
     logging.info("Agente de monitoreo de Windows iniciado.")
-    logging.info(f"El agente monitoreará el sistema cada {intervalo_monitoreo} segundos.")
-    logging.info(f"Las métricas se guardarán en el archivo: {ruta_log}")
     
     while True:
-        # Obtiene métricas de psutil
+        # Lee la configuración dentro del bucle para que sea dinámica
+        config_runtime = configparser.ConfigParser()
+        try:
+            config_runtime.read('config.ini')
+            intervalo_monitoreo = config_runtime.getint('AGENTE', 'intervalo_monitoreo', fallback=5)
+        except Exception as e:
+            logging.error(f"Error al leer la configuración en tiempo de ejecución. Usando valores por defecto. Error: {e}")
+            intervalo_monitoreo = 5
+            
+        # Obtiene métricas del sistema
         metricas_sistema = obtener_metricas_sistema()
         
         # Obtiene métricas de WMI
         metricas_wmi = obtener_metricas_wmi()
+
+        # Obtiene la lista de procesos
+        lista_procesos = obtener_lista_procesos()
         
         if metricas_sistema and metricas_wmi:
-            # Crea un mensaje de registro con las métricas de ambos
-            mensaje = (
+            # Crea y registra un mensaje con las métricas del sistema y WMI
+            mensaje_sistema = (
                 f"CPU: {metricas_sistema['cpu_percent']}% | "
                 f"RAM: {metricas_sistema['memoria_percent']}% ({metricas_sistema['memoria_usada_gb']}/{metricas_sistema['memoria_total_gb']} GB) | "
                 f"Disco C: {metricas_sistema['disco_percent']}% ({metricas_sistema['disco_usado_gb']}/{metricas_sistema['disco_total_gb']} GB) | "
-                f"Red (Bytes): Enviados={metricas_sistema['red_bytes_enviados']}, Recibidos={metricas_sistema['red_bytes_recibidos']} | "
+                f"Red (Bytes): Enviados={metricas_sistema['red_bytes_enviados']}, Recibidos={metricas_sistema['red_bytes_recibidos']}"
+            )
+            logging.info(mensaje_sistema)
+            
+            mensaje_wmi = (
                 f"WMI: Placa Base={metricas_wmi.get('placa_base_producto', 'N/A')} | "
                 f"Servicio Spooler={metricas_wmi.get('estado_servicio_spooler', 'N/A')} | "
                 f"Tarjeta de red={metricas_wmi.get('tarjeta_red_descripcion', 'N/A')} ({metricas_wmi.get('tarjeta_red_ip', 'N/A')}) | "
                 f"Batería={metricas_wmi.get('bateria_porcentaje', 'N/A')} (Estado: {metricas_wmi.get('bateria_estado', 'N/A')}) | "
                 f"Temperatura CPU={metricas_wmi.get('cpu_temperatura_celsius', 'N/A')}°C"
             )
-            logging.info(mensaje)
+            logging.info(mensaje_wmi)
         
+            # Loguea la lista de procesos según la condición de CPU
+            if metricas_sistema['cpu_percent'] > 95:
+                logging.warning(f"ALERTA: Alto uso de CPU! Procesos en ejecución ({len(lista_procesos)} total):")
+                # Limita la salida a 10 procesos para evitar logs demasiado grandes
+                for i, proc in enumerate(lista_procesos[:10]):
+                    logging.warning(f"  - PID: {proc['pid']} | Nombre: {proc['name']}")
+            else:
+                logging.info(f"Número de procesos en ejecución: {len(lista_procesos)}")
+
         # Espera el intervalo de tiempo antes de la siguiente recolección
         time.sleep(intervalo_monitoreo)
 

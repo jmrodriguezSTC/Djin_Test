@@ -5,3 +5,17 @@
 2025-08-29 08:44:07,924 - INFO - CPU: 4.6% | RAM: 88.6% (13.15/14.85 GB) | Disco C: 37.9% (180.39/476.1 GB) | Red (Bytes): Enviados=135595293, Recibidos=390970378
 2025-08-29 08:44:28,948 - INFO - CPU: 3.7% | RAM: 88.8% (13.18/14.85 GB) | Disco C: 37.9% (180.39/476.1 GB) | Red (Bytes): Enviados=135606935, Recibidos=391002845
 2025-08-29 08:44:49,964 - INFO - CPU: 4.7% | RAM: 88.9% (13.19/14.85 GB) | Disco C: 37.9% (180.39/476.1 GB) | Red (Bytes): Enviados=135886248, Recibidos=391736383
+2025-08-29 09:35:24,275 - INFO - Agente de monitoreo de Windows iniciado.
+2025-08-29 09:35:24,275 - INFO - El agente monitoreará el sistema cada 20 segundos.
+2025-08-29 09:35:24,276 - INFO - Las métricas se guardarán en el archivo: C:\Users\jmrodriguez\Downloads\Projects\Tests\Djin_Test\agente_monitoreo.log
+2025-08-29 09:35:25,302 - ERROR - Error al obtener métricas de WMI: name 'wmi' is not defined
+2025-08-29 09:35:59,299 - INFO - Agente de monitoreo de Windows iniciado.
+2025-08-29 09:35:59,309 - INFO - El agente monitoreará el sistema cada 20 segundos.
+2025-08-29 09:35:59,309 - INFO - Las métricas se guardarán en el archivo: C:\Users\jmrodriguez\Downloads\Projects\Tests\Djin_Test\agente_monitoreo.log
+2025-08-29 09:36:01,565 - INFO - CPU: 6.6% | RAM: 80.7% (11.98/14.85 GB) | Disco C: 37.8% (180.11/476.1 GB) | Red (Bytes): Enviados=162419105, Recibidos=465041323 | WMI: Placa Base=LNVNB161216 | Servicio Spooler=Running
+2025-08-29 09:36:23,257 - INFO - CPU: 4.4% | RAM: 79.7% (11.83/14.85 GB) | Disco C: 37.8% (180.11/476.1 GB) | Red (Bytes): Enviados=162575542, Recibidos=465093361 | WMI: Placa Base=LNVNB161216 | Servicio Spooler=Running
+2025-08-29 09:41:32,604 - INFO - Agente de monitoreo de Windows iniciado.
+2025-08-29 09:41:32,604 - INFO - El agente monitoreará el sistema cada 20 segundos.
+2025-08-29 09:41:32,605 - INFO - Las métricas se guardarán en el archivo: C:\Users\jmrodriguez\Downloads\Projects\Tests\Djin_Test\agente_monitoreo.log
+2025-08-29 09:41:34,464 - INFO - CPU: 9.7% | RAM: 81.1% (12.03/14.85 GB) | Disco C: 37.8% (180.12/476.1 GB) | Red (Bytes): Enviados=163749102, Recibidos=467643894 | WMI: Placa Base=LNVNB161216 | Servicio Spooler=Running | Tarjeta de red=Realtek RTL8852BE WiFi 6 802.11ax PCIe Adapter (10.245.15.9) | Batería=99% (Estado: 2) | Temperatura CPU=N/A°C
+2025-08-29 09:41:56,247 - INFO - CPU: 5.6% | RAM: 79.1% (11.74/14.85 GB) | Disco C: 37.8% (180.12/476.1 GB) | Red (Bytes): Enviados=164060757, Recibidos=468392047 | WMI: Placa Base=LNVNB161216 | Servicio Spooler=Running | Tarjeta de red=Realtek RTL8852BE WiFi 6 802.11ax PCIe Adapter (10.245.15.9) | Batería=99% (Estado: 2) | Temperatura CPU=N/A°C

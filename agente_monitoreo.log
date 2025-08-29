@@ -1,0 +1,7 @@
+2025-08-29 08:43:45,877 - INFO - Agente de monitoreo de Windows iniciado.
+2025-08-29 08:43:45,878 - INFO - El agente monitoreará el sistema cada 20 segundos.
+2025-08-29 08:43:45,878 - INFO - Las métricas se guardarán en el archivo: C:\Users\jmrodriguez\Downloads\Projects\Tests\Djin\agente_monitoreo.log
+2025-08-29 08:43:46,904 - INFO - CPU: 6.5% | RAM: 88.4% (13.12/14.85 GB) | Disco C: 37.9% (180.39/476.1 GB) | Red (Bytes): Enviados=135326716, Recibidos=390592719
+2025-08-29 08:44:07,924 - INFO - CPU: 4.6% | RAM: 88.6% (13.15/14.85 GB) | Disco C: 37.9% (180.39/476.1 GB) | Red (Bytes): Enviados=135595293, Recibidos=390970378
+2025-08-29 08:44:28,948 - INFO - CPU: 3.7% | RAM: 88.8% (13.18/14.85 GB) | Disco C: 37.9% (180.39/476.1 GB) | Red (Bytes): Enviados=135606935, Recibidos=391002845
+2025-08-29 08:44:49,964 - INFO - CPU: 4.7% | RAM: 88.9% (13.19/14.85 GB) | Disco C: 37.9% (180.39/476.1 GB) | Red (Bytes): Enviados=135886248, Recibidos=391736383

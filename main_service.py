@@ -17,7 +17,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
     """
     Clase que implementa el servicio de monitoreo de Windows.
     """
-    _svc_name_ = "PythonMonitorAgent"
+    _svc_name_ = "PMA_v1.0"
     _svc_display_name_ = "Python Monitor Agent"
     _svc_description_ = "An agent to monitor system resources using Python and save the metrics to a log file."
 
@@ -26,7 +26,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
         self.is_running = True
         self.log_file_name = "monitoreo.log"
-        self.monitor_interval = 5
+        self.monitor_interval = 30
 
     def SvcStop(self):
         """

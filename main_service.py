@@ -8,10 +8,28 @@ import os
 import configparser
 import time
 import sys
+import threading
+import pythoncom
+
+# Importar win32timezone para asegurar que cx_Freeze lo empaquete
+try:
+    import win32timezone
+except ImportError:
+    pass
 
 # Bibliotecas de monitoreo
 import psutil
 import wmi
+
+def _find_dir(path):
+    """
+    Función auxiliar para encontrar la ruta de un archivo,
+    útil para los ejecutables empaquetados.
+    """
+    if getattr(sys, "frozen", False):
+        # Estamos en un ejecutable de cx_Freeze
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
 
 class PythonMonitorService(win32serviceutil.ServiceFramework):
     """
@@ -26,7 +44,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
         self.is_running = True
         self.log_file_name = "monitoreo.log"
-        self.monitor_interval = 30
+        self.monitor_interval = 5
 
     def SvcStop(self):
         """
@@ -58,6 +76,9 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         
         while self.is_running:
             try:
+                # Inicializar COM para que WMI funcione en el hilo del servicio
+                pythoncom.CoInitialize()
+                
                 # Obtiene métricas del sistema
                 metricas_sistema = self.obtener_metricas_sistema()
                 # Obtiene métricas de WMI
@@ -95,6 +116,8 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                         logging.info(f"Número de procesos en ejecución: {len(lista_procesos)}")
             except Exception as e:
                 logging.error(f"Error en el bucle principal: {e}")
+            finally:
+                pythoncom.CoUninitialize()
 
             time.sleep(self.monitor_interval)
 
@@ -104,7 +127,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         """
         config = configparser.ConfigParser()
         try:
-            current_dir = os.path.dirname(os.path.abspath(__file__))
+            current_dir = _find_dir("config.ini")
             config_path = os.path.join(current_dir, "config.ini")
             config.read(config_path)
             self.monitor_interval = config.getint('AGENTE', 'intervalo_monitoreo', fallback=5)
@@ -119,7 +142,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         """
         Configura el logger del servicio.
         """
-        log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), self.log_file_name)
+        log_path = os.path.join(_find_dir("monitoreo.log"), self.log_file_name)
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',

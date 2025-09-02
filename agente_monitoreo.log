@@ -1,0 +1,8 @@
+2025-08-29 12:00:19,824 - INFO - Agente de monitoreo de Windows iniciado.
+2025-08-29 12:00:22,462 - INFO - CPU: 8.2% | RAM: 84.1% (12.49/14.85 GB) | Disco C: 37.7% (179.56/476.1 GB) | Red (Bytes): Enviados=239137683, Recibidos=882913310
+2025-08-29 12:00:22,462 - INFO - WMI: Placa Base=LNVNB161216 | Servicio Spooler=Running | Tarjeta de red=Realtek RTL8852BE WiFi 6 802.11ax PCIe Adapter (10.245.15.9) | Batería=99% (Estado: 2) | Temperatura CPU=N/A°C
+2025-08-29 12:00:22,462 - INFO - Número de procesos en ejecución: 320
+2025-08-29 12:01:37,166 - INFO - Agente de monitoreo de Windows iniciado.
+2025-08-29 12:01:39,720 - INFO - CPU: 6.8% | RAM: 82.5% (12.24/14.85 GB) | Disco C: 37.7% (179.56/476.1 GB) | Red (Bytes): Enviados=239482710, Recibidos=883274349
+2025-08-29 12:01:39,721 - INFO - WMI: Placa Base=LNVNB161216 | Servicio Spooler=Running | Tarjeta de red=Realtek RTL8852BE WiFi 6 802.11ax PCIe Adapter (10.245.15.9) | Batería=99% (Estado: 2) | Temperatura CPU=N/A°C
+2025-08-29 12:01:39,721 - INFO - Número de procesos en ejecución: 311

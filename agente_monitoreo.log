@@ -6,3 +6,15 @@
 2025-08-29 12:01:39,720 - INFO - CPU: 6.8% | RAM: 82.5% (12.24/14.85 GB) | Disco C: 37.7% (179.56/476.1 GB) | Red (Bytes): Enviados=239482710, Recibidos=883274349
 2025-08-29 12:01:39,721 - INFO - WMI: Placa Base=LNVNB161216 | Servicio Spooler=Running | Tarjeta de red=Realtek RTL8852BE WiFi 6 802.11ax PCIe Adapter (10.245.15.9) | Batería=99% (Estado: 2) | Temperatura CPU=N/A°C
 2025-08-29 12:01:39,721 - INFO - Número de procesos en ejecución: 311
+2025-09-03 13:26:02,254 - INFO - Agente de monitoreo de Windows iniciado.
+2025-09-03 13:26:03,851 - INFO - CPU: 3.7% | RAM: 82.7% (12.28/14.85 GB) | Disco C: 35.2% (167.48/476.1 GB) | Red (Bytes): Enviados=12199402, Recibidos=7859017
+2025-09-03 13:26:03,851 - INFO - WMI: Placa Base=LNVNB161216 | Servicio Spooler=Running | Tarjeta de red=Realtek RTL8852BE WiFi 6 802.11ax PCIe Adapter (192.168.24.110) | Batería=99% (Estado: 2) | Temperatura CPU=N/A°C
+2025-09-03 13:26:03,851 - INFO - Número de procesos en ejecución: 351
+2025-09-03 13:27:06,398 - INFO - Agente de monitoreo de Windows iniciado.
+2025-09-03 13:57:51,958 - INFO - Agente de monitoreo de Windows iniciado.
+2025-09-03 13:57:53,564 - INFO - CPU: 8.9% | RAM: 82.9% (12.3/14.85 GB) | Disco C: 35.2% (167.5/476.1 GB) | Red (Bytes): Enviados=17020825, Recibidos=11212591
+2025-09-03 13:57:53,565 - INFO - WMI: Placa Base=LNVNB161216 | Servicio Spooler=Running | Tarjeta de red=Realtek RTL8852BE WiFi 6 802.11ax PCIe Adapter (192.168.24.110) | Batería=99% (Estado: 2) | Temperatura CPU=N/A°C
+2025-09-03 13:57:53,565 - INFO - Número de procesos en ejecución: 352
+2025-09-03 13:58:25,125 - INFO - CPU: 5.4% | RAM: 82.3% (12.22/14.85 GB) | Disco C: 35.2% (167.5/476.1 GB) | Red (Bytes): Enviados=17102323, Recibidos=11312865
+2025-09-03 13:58:25,126 - INFO - WMI: Placa Base=LNVNB161216 | Servicio Spooler=Running | Tarjeta de red=Realtek RTL8852BE WiFi 6 802.11ax PCIe Adapter (192.168.24.110) | Batería=99% (Estado: 2) | Temperatura CPU=N/A°C
+2025-09-03 13:58:25,126 - INFO - Número de procesos en ejecución: 354

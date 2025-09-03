@@ -10,16 +10,14 @@ import time
 import sys
 import threading
 import pythoncom
+import psutil
+import wmi
 
 # Importar win32timezone para asegurar que cx_Freeze lo empaquete
 try:
     import win32timezone
 except ImportError:
     pass
-
-# Bibliotecas de monitoreo
-import psutil
-import wmi
 
 def _find_dir(path):
     """
@@ -94,6 +92,10 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                         f"Disco C: {metricas_sistema['disco_percent']}% ({metricas_sistema['disco_usado_gb']}/{metricas_sistema['disco_total_gb']} GB) | "
                         f"Red (Bytes): Enviados={metricas_sistema['red_bytes_enviados']}, Recibidos={metricas_sistema['red_bytes_recibidos']}"
                     )
+                    
+                    if 'rpm_ventilador' in metricas_sistema:
+                        mensaje_sistema += f" | RPM Ventilador: {metricas_sistema['rpm_ventilador']}"
+                    
                     logging.info(mensaje_sistema)
                     
                     # Crea y registra un mensaje con las métricas de WMI
@@ -101,9 +103,13 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                         f"WMI: Placa Base={metricas_wmi.get('placa_base_producto', 'N/A')} | "
                         f"Servicio Spooler={metricas_wmi.get('estado_servicio_spooler', 'N/A')} | "
                         f"Tarjeta de red={metricas_wmi.get('tarjeta_red_descripcion', 'N/A')} ({metricas_wmi.get('tarjeta_red_ip', 'N/A')}) | "
-                        f"Batería={metricas_wmi.get('bateria_porcentaje', 'N/A')} (Estado: {metricas_wmi.get('bateria_estado', 'N/A')}) | "
-                        f"Temperatura CPU={metricas_wmi.get('cpu_temperatura_celsius', 'N/A')}°C"
+                        f"Batería={metricas_wmi.get('bateria_porcentaje', 'N/A')} (Estado: {metricas_wmi.get('bateria_estado', 'N/A')})"
                     )
+
+                    # Añadir la temperatura del CPU al mensaje si está disponible
+                    if 'cpu_temperatura_celsius' in metricas_wmi:
+                        mensaje_wmi += f" | Temperatura CPU: {metricas_wmi['cpu_temperatura_celsius']}°C"
+                    
                     logging.info(mensaje_wmi)
                 
                     # Loguea la lista de procesos según la condición de CPU
@@ -169,6 +175,16 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
             red = psutil.net_io_counters()
             metricas['red_bytes_enviados'] = red.bytes_sent
             metricas['red_bytes_recibidos'] = red.bytes_recv
+            
+            # Obtiene la información de los ventiladores del sistema usando psutil
+            if hasattr(psutil, 'sensors_fans'):
+                fans = psutil.sensors_fans()
+                if fans:
+                    for name, entries in fans.items():
+                        if entries:
+                            metricas['rpm_ventilador'] = entries[0].current
+                            break
+
         except Exception as e:
             logging.error(f"Error al obtener métricas del sistema: {e}")
             return None
@@ -184,28 +200,47 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
             for board in c.Win32_BaseBoard():
                 metricas_wmi['placa_base_fabricante'] = board.Manufacturer
                 metricas_wmi['placa_base_producto'] = board.Product
-            for service in c.Win32_Service(Name="Spooler"):
-                metricas_wmi['estado_servicio_spooler'] = service.State
+            
+            # Métrica: estado del servicio Spooler
+            try:
+                for service in c.Win32_Service(Name="Spooler"):
+                    metricas_wmi['estado_servicio_spooler'] = service.State
+                
+            except Exception as e:
+                logging.error(f"Error al obtener métrica de servicio Spooler: {e}")
+
+            # Métrica: tarjeta de red y dirección IP
             try:
                 for interface in c.Win32_NetworkAdapterConfiguration(IPEnabled=True):
                     metricas_wmi['tarjeta_red_descripcion'] = interface.Description
                     metricas_wmi['tarjeta_red_ip'] = interface.IPAddress[0] if interface.IPAddress else "N/A"
                     break
-            except wmi.WMIError:
+            except Exception as e:
+                logging.error(f"Error al obtener métrica de tarjeta de red: {e}")
                 pass
+
+            # Métrica: estado de la batería
             try:
                 for battery in c.Win32_Battery():
                     metricas_wmi['bateria_porcentaje'] = f"{battery.EstimatedChargeRemaining}%"
                     metricas_wmi['bateria_estado'] = battery.BatteryStatus
                     break
-            except wmi.WMIError:
+            except Exception as e:
+                logging.error(f"Error al obtener métrica de batería: {e}")
                 pass
+            
+            # Nuevo intento para obtener la temperatura de la CPU usando el namespace de OpenHardwareMonitor
+            # Requiere que OpenHardwareMonitor.exe esté en ejecución.
             try:
-                for temp_sensor in c.Win32_TemperatureProbe():
-                    metricas_wmi['cpu_temperatura_celsius'] = temp_sensor.CurrentReading / 10
-                    break
-            except wmi.WMIError:
-                pass
+                w = wmi.WMI(namespace="root\OpenHardwareMonitor")
+                temperature_info = w.Sensor()
+                for sensor in temperature_info:
+                    if sensor.SensorType == 'Temperature' and 'cpu' in sensor.Name.lower():
+                        metricas_wmi['cpu_temperatura_celsius'] = round(float(sensor.Value), 2)
+                        break
+            except Exception as e:
+                logging.error(f"Error al obtener temperatura del CPU de OpenHardwareMonitor: {e}")
+
         except Exception as e:
             logging.error(f"Error al obtener métricas de WMI: {e}")
             return None

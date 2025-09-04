@@ -5,7 +5,8 @@ from cx_Freeze import setup, Executable
 build_exe_options = {
     "packages": ["os", "sys", "psutil", "wmi", "configparser"],
     "excludes": ["tkinter"],
-    "include_files": ["config.ini"],
+    "include_files": ["config.ini", "OpenHardwareMonitorLib.dll"
+    ],
 }
 
 # Configuración del servicio

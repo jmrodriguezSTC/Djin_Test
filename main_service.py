@@ -12,12 +12,17 @@ import threading
 import pythoncom
 import psutil
 import wmi
+import clr # Se necesita la biblioteca 'pythonnet'
 
 # Importar win32timezone para asegurar que cx_Freeze lo empaquete
 try:
     import win32timezone
 except ImportError:
     pass
+
+# Se necesitan estos dos archivos en la misma carpeta del script
+# 1. OpenHardwareMonitorLib.dll
+# 2. El script principal (main_service.py)
 
 def _find_dir(path):
     """
@@ -43,6 +48,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         self.is_running = True
         self.log_file_name = "monitoreo.log"
         self.monitor_interval = 5
+        self.open_hardware_monitor_handle = None
 
     def SvcStop(self):
         """
@@ -72,6 +78,13 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         
         logging.info("Agente de monitoreo de Windows iniciado.")
         
+        # Inicializar el handle de OpenHardwareMonitor una sola vez
+        try:
+            self.open_hardware_monitor_handle = self.initialize_openhardwaremonitor()
+        except Exception as e:
+            logging.error(f"Error al inicializar OpenHardwareMonitor: {e}")
+            self.open_hardware_monitor_handle = None
+
         while self.is_running:
             try:
                 # Inicializar COM para que WMI funcione en el hilo del servicio
@@ -157,6 +170,45 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
             ]
         )
 
+    def initialize_openhardwaremonitor(self):
+        """
+        Inicializa OpenHardwareMonitor llamando directamente a la DLL.
+        """
+        try:
+            dll_path = os.path.join(_find_dir("OpenHardwareMonitorLib.dll"), "OpenHardwareMonitorLib.dll")
+            clr.AddReference(dll_path)
+            from OpenHardwareMonitor import Hardware
+            handle = Hardware.Computer()
+            handle.CPUEnabled = True
+            handle.Open()
+            return handle
+        except Exception as e:
+            logging.error(f"No se pudo inicializar OpenHardwareMonitor. Error: {e}")
+            return None
+
+    def obtener_cpu_temperatura_dll(self):
+        """
+        Obtiene la temperatura de la CPU usando la DLL de OpenHardwareMonitor.
+        """
+        if not self.open_hardware_monitor_handle:
+            return None
+        
+        try:
+            handle = self.open_hardware_monitor_handle
+            handle.CPUEnabled = True
+            handle.Open()
+            
+            for i in handle.Hardware:
+                if i.HardwareType.ToString() == 'CPU':
+                    i.Update()
+                    for sensor in i.Sensors:
+                        if sensor.SensorType.ToString() == 'Temperature' and sensor.Value is not None:
+                            return round(float(sensor.Value), 2)
+        except Exception as e:
+            logging.error(f"Error al obtener temperatura con OpenHardwareMonitor DLL: {e}")
+        
+        return None
+
     def obtener_metricas_sistema(self):
         """
         Recopila métricas clave del sistema usando la biblioteca psutil.
@@ -193,12 +245,18 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
     def obtener_cpu_temperatura(self):
         """
         Intenta obtener la temperatura de la CPU usando diferentes métodos en un orden de prioridad.
-        1. psutil
-        2. WMI (MSAcpi_ThermalZoneTemperature)
-        3. WMI (OpenHardwareMonitor o LibreHardwareMonitor)
+        1. OpenHardwareMonitor DLL (nuevo)
+        2. psutil
+        3. WMI (MSAcpi_ThermalZoneTemperature)
         """
         
-        # Intento 1: psutil
+        # Intento 1: OpenHardwareMonitor DLL
+        temp_dll = self.obtener_cpu_temperatura_dll()
+        if temp_dll is not None:
+            return temp_dll
+        logging.info("La temperatura no se pudo obtener con la DLL de OpenHardwareMonitor.")
+
+        # Intento 2: psutil
         try:
             if hasattr(psutil, 'sensors_temperatures'):
                 temps = psutil.sensors_temperatures()
@@ -210,7 +268,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         except Exception as e:
             logging.error(f"Error al obtener temperatura con psutil: {e}")
 
-        # Intento 2: WMI con MSAcpi_ThermalZoneTemperature
+        # Intento 3: WMI con MSAcpi_ThermalZoneTemperature
         try:
             c = wmi.WMI()
             for temp_sensor in c.MSAcpi_ThermalZoneTemperature():
@@ -220,29 +278,10 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         except Exception as e:
             logging.error(f"Error al obtener temperatura con WMI: {e}")
 
-        # Intento 3: WMI con OpenHardwareMonitor o LibreHardwareMonitor
-        try:
-            # Primero intentar con el namespace de OpenHardwareMonitor
-            w = wmi.WMI(namespace="root\OpenHardwareMonitor")
-            temperature_info = w.Sensor()
-            for sensor in temperature_info:
-                if sensor.SensorType == 'Temperature' and 'cpu' in sensor.Name.lower():
-                    return round(float(sensor.Value), 2)
-        except Exception as e:
-            logging.error(f"Error al obtener temperatura del CPU de OpenHardwareMonitor: {e}")
-
-        try:
-            # Si el primer intento falló, probar con el namespace de LibreHardwareMonitor
-            w = wmi.WMI(namespace="root\LibreHardwareMonitor")
-            temperature_info = w.Sensor()
-            for sensor in temperature_info:
-                if sensor.SensorType == 'Temperature' and 'cpu' in sensor.Name.lower():
-                    return round(float(sensor.Value), 2)
-        except Exception as e:
-            logging.error(f"Error al obtener temperatura del CPU de LibreHardwareMonitor: {e}")
+        # Aquí ya no incluimos los namespaces de WMI para OpenHardwareMonitor/LibreHardwareMonitor
+        # porque la llamada directa a la DLL es más fiable y ya se intentó.
 
         return None
-
 
     def obtener_metricas_wmi(self):
         """
@@ -259,7 +298,6 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
             try:
                 for service in c.Win32_Service(Name="Spooler"):
                     metricas_wmi['estado_servicio_spooler'] = service.State
-                
             except Exception as e:
                 logging.error(f"Error al obtener métrica de servicio Spooler: {e}")
 

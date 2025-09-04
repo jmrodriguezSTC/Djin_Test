@@ -190,6 +190,60 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
             return None
         return metricas
 
+    def obtener_cpu_temperatura(self):
+        """
+        Intenta obtener la temperatura de la CPU usando diferentes métodos en un orden de prioridad.
+        1. psutil
+        2. WMI (MSAcpi_ThermalZoneTemperature)
+        3. WMI (OpenHardwareMonitor o LibreHardwareMonitor)
+        """
+        
+        # Intento 1: psutil
+        try:
+            if hasattr(psutil, 'sensors_temperatures'):
+                temps = psutil.sensors_temperatures()
+                if 'coretemp' in temps:
+                    for entry in temps['coretemp']:
+                        if 'cpu' in entry.label.lower() or 'package id' in entry.label.lower():
+                            return round(entry.current, 2)
+            logging.info("La temperatura no se pudo obtener con psutil.")
+        except Exception as e:
+            logging.error(f"Error al obtener temperatura con psutil: {e}")
+
+        # Intento 2: WMI con MSAcpi_ThermalZoneTemperature
+        try:
+            c = wmi.WMI()
+            for temp_sensor in c.MSAcpi_ThermalZoneTemperature():
+                temp_celsius = (temp_sensor.CurrentTemperature / 10) - 273.15
+                return round(temp_celsius, 2)
+            logging.info("La temperatura no se pudo obtener con WMI.")
+        except Exception as e:
+            logging.error(f"Error al obtener temperatura con WMI: {e}")
+
+        # Intento 3: WMI con OpenHardwareMonitor o LibreHardwareMonitor
+        try:
+            # Primero intentar con el namespace de OpenHardwareMonitor
+            w = wmi.WMI(namespace="root\OpenHardwareMonitor")
+            temperature_info = w.Sensor()
+            for sensor in temperature_info:
+                if sensor.SensorType == 'Temperature' and 'cpu' in sensor.Name.lower():
+                    return round(float(sensor.Value), 2)
+        except Exception as e:
+            logging.error(f"Error al obtener temperatura del CPU de OpenHardwareMonitor: {e}")
+
+        try:
+            # Si el primer intento falló, probar con el namespace de LibreHardwareMonitor
+            w = wmi.WMI(namespace="root\LibreHardwareMonitor")
+            temperature_info = w.Sensor()
+            for sensor in temperature_info:
+                if sensor.SensorType == 'Temperature' and 'cpu' in sensor.Name.lower():
+                    return round(float(sensor.Value), 2)
+        except Exception as e:
+            logging.error(f"Error al obtener temperatura del CPU de LibreHardwareMonitor: {e}")
+
+        return None
+
+
     def obtener_metricas_wmi(self):
         """
         Recopila métricas específicas de Windows usando la biblioteca wmi.
@@ -229,17 +283,10 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                 logging.error(f"Error al obtener métrica de batería: {e}")
                 pass
             
-            # Nuevo intento para obtener la temperatura de la CPU usando el namespace de OpenHardwareMonitor
-            # Requiere que OpenHardwareMonitor.exe esté en ejecución.
-            try:
-                w = wmi.WMI(namespace="root\OpenHardwareMonitor")
-                temperature_info = w.Sensor()
-                for sensor in temperature_info:
-                    if sensor.SensorType == 'Temperature' and 'cpu' in sensor.Name.lower():
-                        metricas_wmi['cpu_temperatura_celsius'] = round(float(sensor.Value), 2)
-                        break
-            except Exception as e:
-                logging.error(f"Error al obtener temperatura del CPU de OpenHardwareMonitor: {e}")
+            # Obtener la temperatura de la CPU
+            temp = self.obtener_cpu_temperatura()
+            if temp is not None:
+                metricas_wmi['cpu_temperatura_celsius'] = temp
 
         except Exception as e:
             logging.error(f"Error al obtener métricas de WMI: {e}")

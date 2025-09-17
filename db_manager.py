@@ -1,43 +1,55 @@
 import sqlite3
-import os
 import logging
-from datetime import datetime
+import os
 
 class DBManager:
     """
-    Clase para gestionar la conexión y las operaciones de la base de datos SQLite.
+    Clase Singleton para gestionar la conexión a la base de datos SQLite.
     """
-    def __init__(self, db_path):
-        self.db_path = db_path
-        self.conn = None
-        self.cursor = None
+    _instance = None
+    _connection = None
+    _cursor = None
+    _db_path = None
 
-    def connect(self):
-        """Establece la conexión con la base de datos."""
-        try:
-            self.conn = sqlite3.connect(self.db_path)
-            self.cursor = self.conn.cursor()
-            logging.info(f"Conexión a la base de datos {self.db_path} establecida.")
-            return True
-        except sqlite3.Error as e:
-            logging.error(f"Error al conectar a la base de datos: {e}")
-            return False
+    def __new__(cls, db_path=None):
+        """
+        Método mágico que controla la creación de la instancia.
+        """
+        if cls._instance is None:
+            # Si no existe una instancia, la creamos
+            cls._instance = super(DBManager, cls).__new__(cls)
+            if db_path:
+                cls._db_path = db_path
+                cls._instance._connect()
+        return cls._instance
 
-    def close(self):
+    def _connect(self):
+        """Método privado para establecer la conexión."""
+        if not self._connection:
+            try:
+                self._connection = sqlite3.connect(self._db_path)
+                self._cursor = self._connection.cursor()
+                logging.info(f"Conexión a la base de datos {self._db_path} establecida.")
+                self.create_table()
+            except sqlite3.Error as e:
+                logging.error(f"Error al conectar a la base de datos: {e}")
+                self._connection = None
+
+    def close_connection(self):
         """Cierra la conexión a la base de datos."""
-        if self.conn:
-            self.conn.close()
+        if self._connection:
+            self._connection.close()
+            self._connection = None
             logging.info("Conexión a la base de datos cerrada.")
 
     def create_table(self):
         """Crea la tabla si no existe para almacenar las métricas."""
-        if not self.conn:
+        if not self._connection:
             logging.error("No hay conexión a la base de datos.")
             return
 
         try:
-            # Creamos una tabla llamada 'metricas' con las columnas necesarias
-            self.cursor.execute('''
+            self._cursor.execute('''
                 CREATE TABLE IF NOT EXISTS metricas (
                     timestamp TEXT PRIMARY KEY,
                     cpu_percent REAL,
@@ -56,19 +68,19 @@ class DBManager:
                     battery_percent TEXT
                 )
             ''')
-            self.conn.commit()
-            logging.info("Tabla 'metricas' verificada/creada exitosamente.")
+            self._connection.commit()
+            logging.debug("Tabla 'metricas' verificada/creada exitosamente.")
         except sqlite3.Error as e:
             logging.error(f"Error al crear la tabla: {e}")
 
     def insert_metrics(self, data):
         """Inserta un nuevo registro de métricas en la base de datos."""
-        if not self.conn:
+        if not self._connection:
             logging.error("No hay conexión a la base de datos.")
             return
 
         try:
-            self.cursor.execute('''
+            self._cursor.execute('''
                 INSERT INTO metricas (
                     timestamp,
                     cpu_percent,
@@ -103,7 +115,7 @@ class DBManager:
                 data.get('tarjeta_red_ip'),
                 data.get('bateria_porcentaje')
             ))
-            self.conn.commit()
+            self._connection.commit()
             logging.debug("Métricas insertadas en la base de datos.")
         except sqlite3.Error as e:
             logging.error(f"Error al insertar métricas: {e}")

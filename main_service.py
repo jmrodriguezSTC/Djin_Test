@@ -51,8 +51,6 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         self.log_file_name = "monitoreo.log"
         self.monitor_interval = 5
         self.open_hardware_monitor_handle = None
-        # Atributo para la base de datos
-        self.db_manager = None
 
     def SvcStop(self):
         """
@@ -61,9 +59,9 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         self.is_running = False
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.hWaitStop)
-        # Cierra la conexión a la base de datos
-        if self.db_manager:
-            self.db_manager.close()
+        # Cierra la conexión de la base de datos usando el Singleton
+        db_manager = DBManager()
+        db_manager.close_connection()
 
     def SvcDoRun(self):
         """
@@ -85,14 +83,9 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         
         logging.info("Agente de monitoreo de Windows iniciado.")
         
-        # Inicializar y conectar a la base de datos
+        # Obtiene la instancia del Singleton. Esto crea la conexión la primera vez.
         db_path = os.path.join(_find_dir("monitoreo.db"), "monitoreo.db")
-        self.db_manager = DBManager(db_path)
-        if self.db_manager.connect():
-            self.db_manager.create_table()
-        else:
-            logging.error("No se pudo conectar a la base de datos. Las métricas no se guardarán en DB.")
-            self.db_manager = None # Aseguramos que no se intente usar si la conexión falló
+        db_manager = DBManager(db_path)
 
         # Inicializar el handle de OpenHardwareMonitor una sola vez
         try:
@@ -118,9 +111,8 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                     metricas_combinadas = {**metricas_sistema, **metricas_wmi}
                     metricas_combinadas['timestamp'] = datetime.now().isoformat()
                     
-                    # Almacenar en la base de datos si la conexión es exitosa
-                    if self.db_manager:
-                        self.db_manager.insert_metrics(metricas_combinadas)
+                    # Almacena las métricas usando la instancia Singleton
+                    db_manager.insert_metrics(metricas_combinadas)
 
                     # Crea y registra un mensaje con las métricas del sistema
                     mensaje_sistema = (

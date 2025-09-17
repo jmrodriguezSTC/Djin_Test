@@ -13,6 +13,8 @@ import pythoncom
 import psutil
 import wmi
 import clr # Se necesita la biblioteca 'pythonnet'
+from db_manager import DBManager
+from datetime import datetime
 
 # Importar win32timezone para asegurar que cx_Freeze lo empaquete
 try:
@@ -49,6 +51,8 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         self.log_file_name = "monitoreo.log"
         self.monitor_interval = 5
         self.open_hardware_monitor_handle = None
+        # Atributo para la base de datos
+        self.db_manager = None
 
     def SvcStop(self):
         """
@@ -57,6 +61,9 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         self.is_running = False
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.hWaitStop)
+        # Cierra la conexión a la base de datos
+        if self.db_manager:
+            self.db_manager.close()
 
     def SvcDoRun(self):
         """
@@ -78,6 +85,15 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         
         logging.info("Agente de monitoreo de Windows iniciado.")
         
+        # Inicializar y conectar a la base de datos
+        db_path = os.path.join(_find_dir("monitoreo.db"), "monitoreo.db")
+        self.db_manager = DBManager(db_path)
+        if self.db_manager.connect():
+            self.db_manager.create_table()
+        else:
+            logging.error("No se pudo conectar a la base de datos. Las métricas no se guardarán en DB.")
+            self.db_manager = None # Aseguramos que no se intente usar si la conexión falló
+
         # Inicializar el handle de OpenHardwareMonitor una sola vez
         try:
             self.open_hardware_monitor_handle = self.initialize_openhardwaremonitor()
@@ -98,6 +114,14 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                 lista_procesos = self.obtener_lista_procesos()
 
                 if metricas_sistema and metricas_wmi:
+                    # Combinamos ambos diccionarios
+                    metricas_combinadas = {**metricas_sistema, **metricas_wmi}
+                    metricas_combinadas['timestamp'] = datetime.now().isoformat()
+                    
+                    # Almacenar en la base de datos si la conexión es exitosa
+                    if self.db_manager:
+                        self.db_manager.insert_metrics(metricas_combinadas)
+
                     # Crea y registra un mensaje con las métricas del sistema
                     mensaje_sistema = (
                         f"CPU: {metricas_sistema['cpu_percent']}% | "

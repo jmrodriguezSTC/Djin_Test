@@ -19,6 +19,6 @@ Ejecutar en CMD con Administrador
 
 - Services
   Construir Ejecutable python setup.py build
-  Instalar Servicio build/exe.win-amd64-3.13/PythonMonitorAgent.exe --startup auto install
+  Instalar Servicio build/Pruebas/exe.win-amd64-3.13/PythonMonitorAgent.exe --startup auto install
   Iniciar Servicio net start "PMA_v1.0"
   Detener Servicio net stop "PMA_v1.0"

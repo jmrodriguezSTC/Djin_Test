@@ -116,28 +116,26 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
 
                     # Crea y registra un mensaje con las métricas del sistema
                     mensaje_sistema = (
-                        f"CPU: {metricas_sistema['cpu_percent']}% | "
-                        f"RAM: {metricas_sistema['memoria_percent']}% ({metricas_sistema['memoria_usada_gb']}/{metricas_sistema['memoria_total_gb']} GB) | "
-                        f"Disco C: {metricas_sistema['disco_percent']}% ({metricas_sistema['disco_usado_gb']}/{metricas_sistema['disco_total_gb']} GB) | "
+                        f"CPU: {metricas_sistema['cpu_percent']}%, Cores: Logical[{metricas_sistema['cpu_core_logical']}] Physical[{metricas_sistema['cpu_core_physical']}], Freq: Current[{metricas_sistema['cpu_freq_current_mhz']:.2f}Mhz], Min[{metricas_sistema['cpu_freq_min_mhz']:.2f}Mhz], Max[{metricas_sistema['cpu_freq_max_mhz']:.2f}Mhz] | "
+                        f"RAM: {metricas_sistema['memoria_percent']}% ({metricas_sistema['memoria_usada_gb']}/{metricas_sistema['memoria_total_gb']} GB, Free:{metricas_sistema['memoria_libre_gb']} GB) | "
+                        f"Swap: {metricas_sistema['swap_percent']}% ({metricas_sistema['swap_usado_gb']}/{metricas_sistema['swap_total_gb']} GB) | "
+                        f"Disco C: {metricas_sistema['disco_percent']}% ({metricas_sistema['disco_usado_gb']}/{metricas_sistema['disco_total_gb']} GB, Free:{metricas_sistema['disco_libre_gb']} GB) | "
                         f"Red (Bytes): Enviados={metricas_sistema['red_bytes_enviados']}, Recibidos={metricas_sistema['red_bytes_recibidos']}"
                     )
-                    
-                    if 'rpm_ventilador' in metricas_sistema:
-                        mensaje_sistema += f" | RPM Ventilador: {metricas_sistema['rpm_ventilador']}"
                     
                     logging.info(mensaje_sistema)
                     
                     # Crea y registra un mensaje con las métricas de WMI
                     mensaje_wmi = (
-                        f"WMI: Placa Base={metricas_wmi.get('placa_base_producto', 'N/A')} | "
-                        f"Servicio Spooler={metricas_wmi.get('estado_servicio_spooler', 'N/A')} | "
-                        f"Tarjeta de red={metricas_wmi.get('tarjeta_red_descripcion', 'N/A')} ({metricas_wmi.get('tarjeta_red_ip', 'N/A')}) | "
+                        f"WMI: OS={metricas_wmi.get('os_name', 'N/A')}, Arquitecture:{metricas_wmi.get('os_architecture', 'N/A')}, Serial Number:{metricas_wmi.get('os_serial_number', 'N/A')}, Last Boost:{metricas_wmi.get('os_last_boot_up_time', 'N/A')} | "
+                        f"Placa Base={metricas_wmi.get('placa_base_producto', 'N/A')}, Fabricante:{metricas_wmi.get('placa_base_fabricante', 'N/A')}, Serial Number:{metricas_wmi.get('placa_base_numero_serie', 'N/A')} | "
+                        f"Procesador={metricas_wmi.get('procesador_nombre', 'N/A')},Cores: Logical={metricas_wmi.get('procesador_nucleos_logicos', 'N/A')}, Physical={metricas_wmi.get('procesador_nucleos_fisicos', 'N/A')} | "
                         f"Batería={metricas_wmi.get('bateria_porcentaje', 'N/A')} (Estado: {metricas_wmi.get('bateria_estado', 'N/A')})"
                     )
 
                     # Añadir la temperatura del CPU al mensaje si está disponible
-                    if 'cpu_temperatura_celsius' in metricas_wmi:
-                        mensaje_wmi += f" | Temperatura CPU: {metricas_wmi['cpu_temperatura_celsius']}°C"
+                    # if 'cpu_temperatura_celsius' in metricas_wmi:
+                    #     mensaje_wmi += f" | Temperatura CPU: {metricas_wmi['cpu_temperatura_celsius']}°C"
                     
                     logging.info(mensaje_wmi)
                 
@@ -232,26 +230,32 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         metricas = {}
         try:
             metricas['cpu_percent'] = psutil.cpu_percent(interval=1)
+            metricas['cpu_core_logical'] = psutil.cpu_count(logical=True)
+            metricas['cpu_core_physical'] = psutil.cpu_count(logical=False)
+            metricas['cpu_freq_current_mhz'] = psutil.cpu_freq().current if psutil.cpu_freq() else None
+            metricas['cpu_freq_min_mhz'] = psutil.cpu_freq().min if psutil.cpu_freq() else None
+            metricas['cpu_freq_max_mhz'] = psutil.cpu_freq().max if psutil.cpu_freq() else None
+            metricas['cpu_times_user'] = psutil.cpu_times().user
+            metricas['cpu_times_system'] = psutil.cpu_times().system
+            metricas['cpu_times_idle'] = psutil.cpu_times().idle
             memoria = psutil.virtual_memory()
             metricas['memoria_total_gb'] = round(memoria.total / (1024 ** 3), 2)
             metricas['memoria_usada_gb'] = round(memoria.used / (1024 ** 3), 2)
+            metricas['memoria_libre_gb'] = round(memoria.available / (1024 ** 3), 2)
             metricas['memoria_percent'] = memoria.percent
-            disco = psutil.disk_usage('C:')
+            swap = psutil.swap_memory()
+            metricas['swap_total_gb'] = round(swap.total / (1024 ** 3), 2)
+            metricas['swap_usado_gb'] = round(swap.used / (1024 ** 3), 2)
+            metricas['swap_percent'] = swap.percent
+            current_mountpoint = os.path.abspath(os.sep)
+            disco = psutil.disk_usage(current_mountpoint)
             metricas['disco_total_gb'] = round(disco.total / (1024 ** 3), 2)
             metricas['disco_usado_gb'] = round(disco.used / (1024 ** 3), 2)
+            metricas['disco_libre_gb'] = round(disco.free / (1024 ** 3), 2)
             metricas['disco_percent'] = disco.percent
             red = psutil.net_io_counters()
             metricas['red_bytes_enviados'] = red.bytes_sent
             metricas['red_bytes_recibidos'] = red.bytes_recv
-            
-            # Obtiene la información de los ventiladores del sistema usando psutil
-            if hasattr(psutil, 'sensors_fans'):
-                fans = psutil.sensors_fans()
-                if fans:
-                    for name, entries in fans.items():
-                        if entries:
-                            metricas['rpm_ventilador'] = entries[0].current
-                            break
 
         except Exception as e:
             logging.error(f"Error al obtener métricas del sistema: {e}")
@@ -306,25 +310,35 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         metricas_wmi = {}
         try:
             c = wmi.WMI()
-            for board in c.Win32_BaseBoard():
+            # Métrica: Operatoring System
+            try:
+                os_info = c.Win32_OperatingSystem()[0]
+                metricas_wmi['os_name'] = os_info.Caption
+                metricas_wmi['os_architecture'] = os_info.OSArchitecture
+                metricas_wmi['os_serial_number'] = os_info.SerialNumber
+                metricas_wmi['os_last_boot_up_time'] = os_info.LastBootUpTime.split('.')[0]
+            except Exception as e:
+                logging.error(f"Error al obtener métrica de sistema operativo: {e}")
+                pass
+
+            # Métrica: Placa Base
+            try:
+                board = c.Win32_BaseBoard()[0]
                 metricas_wmi['placa_base_fabricante'] = board.Manufacturer
                 metricas_wmi['placa_base_producto'] = board.Product
-            
-            # Métrica: estado del servicio Spooler
-            try:
-                for service in c.Win32_Service(Name="Spooler"):
-                    metricas_wmi['estado_servicio_spooler'] = service.State
+                metricas_wmi['placa_base_numero_serie'] = board.SerialNumber
             except Exception as e:
-                logging.error(f"Error al obtener métrica de servicio Spooler: {e}")
+                logging.error(f"Error al obtener métrica de placa base: {e}")
+                pass
 
-            # Métrica: tarjeta de red y dirección IP
+            # Métrica: Procesador
             try:
-                for interface in c.Win32_NetworkAdapterConfiguration(IPEnabled=True):
-                    metricas_wmi['tarjeta_red_descripcion'] = interface.Description
-                    metricas_wmi['tarjeta_red_ip'] = interface.IPAddress[0] if interface.IPAddress else "N/A"
-                    break
+                cpu_info = c.Win32_Processor()[0]
+                metricas_wmi['procesador_nombre'] = cpu_info.Name.strip()
+                metricas_wmi['procesador_nucleos_logicos'] = cpu_info.NumberOfLogicalProcessors
+                metricas_wmi['procesador_nucleos_fisicos'] = cpu_info.NumberOfCores
             except Exception as e:
-                logging.error(f"Error al obtener métrica de tarjeta de red: {e}")
+                logging.error(f"Error al obtener métrica de procesador: {e}")
                 pass
 
             # Métrica: estado de la batería
@@ -336,11 +350,21 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
             except Exception as e:
                 logging.error(f"Error al obtener métrica de batería: {e}")
                 pass
+
+            # Métrica: tarjeta de red y dirección IP
+            # try:
+            #     for interface in c.Win32_NetworkAdapterConfiguration(IPEnabled=True):
+            #         metricas_wmi['tarjeta_red_descripcion'] = interface.Description
+            #         metricas_wmi['tarjeta_red_ip'] = interface.IPAddress[0] if interface.IPAddress else "N/A"
+            #         break
+            # except Exception as e:
+            #     logging.error(f"Error al obtener métrica de tarjeta de red: {e}")
+            #     pass
             
             # Obtener la temperatura de la CPU
-            temp = self.obtener_cpu_temperatura()
-            if temp is not None:
-                metricas_wmi['cpu_temperatura_celsius'] = temp
+            # temp = self.obtener_cpu_temperatura()
+            # if temp is not None:
+            #     metricas_wmi['cpu_temperatura_celsius'] = temp
 
         except Exception as e:
             logging.error(f"Error al obtener métricas de WMI: {e}")

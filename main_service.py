@@ -26,7 +26,28 @@ except ImportError:
 # 1. OpenHardwareMonitorLib.dll
 # 2. El script principal (main_service.py)
 
-def _find_dir(path):
+# Lista de tipos de hardware conocidos por OpenHardwareMonitor.
+openhardwaremonitor_hwtypes = {
+    'CPU': 'CPU',
+    'RAM': 'RAM',
+    'HDD': 'Disco Duro'
+}
+
+# Diccionario para mapear tipos de sensores a sus unidades.
+sensor_units = {
+    'Temperature': '°C',
+    'Fan': 'RPM',
+    'Load': '%',
+    'Power': 'W',
+    'Clock': 'MHz',
+    'Voltage': 'V',
+    'Data': 'GB',
+    'Flow': 'L/h',
+    'Control': '%',
+    'Factor': ''
+}
+
+def _find_dir():
     """
     Función auxiliar para encontrar la ruta de un archivo,
     útil para los ejecutables empaquetados.
@@ -84,7 +105,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         logging.info("Agente de monitoreo de Windows iniciado.")
         
         # Obtiene la instancia del Singleton. Esto crea la conexión la primera vez.
-        db_path = os.path.join(_find_dir("monitoreo.db"), "monitoreo.db")
+        db_path = os.path.join(_find_dir(), "monitoreo.db")
         db_manager = DBManager(db_path)
 
         # Inicializar el handle de OpenHardwareMonitor una sola vez
@@ -103,6 +124,8 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                 metricas_sistema = self.obtener_metricas_sistema()
                 # Obtiene métricas de WMI
                 metricas_wmi = self.obtener_metricas_wmi()
+                # Obtiene métricas de OHM
+                metricas_ohm = self.obtener_metricas_ohm()
                 # Obtiene la lista de procesos
                 lista_procesos = self.obtener_lista_procesos()
 
@@ -132,12 +155,18 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                         f"Procesador={metricas_wmi.get('procesador_nombre', 'N/A')},Cores: Logical={metricas_wmi.get('procesador_nucleos_logicos', 'N/A')}, Physical={metricas_wmi.get('procesador_nucleos_fisicos', 'N/A')} | "
                         f"Batería={metricas_wmi.get('bateria_porcentaje', 'N/A')} (Estado: {metricas_wmi.get('bateria_estado', 'N/A')})"
                     )
-
-                    # Añadir la temperatura del CPU al mensaje si está disponible
-                    # if 'cpu_temperatura_celsius' in metricas_wmi:
-                    #     mensaje_wmi += f" | Temperatura CPU: {metricas_wmi['cpu_temperatura_celsius']}°C"
                     
                     logging.info(mensaje_wmi)
+
+                    # Crea y registra un mensaje con las métricas de OHM
+                    mensaje_ohm = (
+                        f"OHM CPU: {metricas_ohm.get('cpu_name', 'N/A')}, Load:{metricas_ohm.get('cpu_load_percent', 'N/A')} %, Power: Package:{metricas_ohm.get('cpu_power_package_watts', 'N/A')} W, Cores:{metricas_ohm.get('cpu_power_cores_watts', 'N/A')} W, Bus Speed:{metricas_ohm.get('cpu_clocks_mhz', 'N/A')} Mhz, Temperature:{metricas_ohm.get('cpu_temperatura_celsius', 'N/A')} ºC | "
+                        f"Memory: {metricas_ohm.get('ram_name', 'N/A')}, {metricas_ohm.get('ram_load_percent', 'N/A')} %, Used:{metricas_ohm.get('ram_used_gb', 'N/A')} GB, Available:{metricas_ohm.get('ram_available_gb', 'N/A')} GB | "
+                        f"Disco Duro: {metricas_ohm.get('hdd_name', 'N/A')}, Used:{metricas_ohm.get('hdd_used_gb', 'N/A')} %"
+                    )
+                    # (f"OHM")
+
+                    logging.info(mensaje_ohm)
                 
                     # Loguea la lista de procesos según la condición de CPU
                     if metricas_sistema['cpu_percent'] > 95:
@@ -160,7 +189,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         """
         config = configparser.ConfigParser()
         try:
-            current_dir = _find_dir("config.ini")
+            current_dir = _find_dir()
             config_path = os.path.join(current_dir, "config.ini")
             config.read(config_path)
             self.monitor_interval = config.getint('AGENTE', 'intervalo_monitoreo', fallback=5)
@@ -175,7 +204,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         """
         Configura el logger del servicio.
         """
-        log_path = os.path.join(_find_dir("monitoreo.log"), self.log_file_name)
+        log_path = os.path.join(_find_dir(), self.log_file_name)
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
@@ -189,40 +218,92 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         Inicializa OpenHardwareMonitor llamando directamente a la DLL.
         """
         try:
-            dll_path = os.path.join(_find_dir("OpenHardwareMonitorLib.dll"), "OpenHardwareMonitorLib.dll")
+            dll_path = os.path.join(_find_dir(), "OpenHardwareMonitorLib.dll")
             clr.AddReference(dll_path)
             from OpenHardwareMonitor import Hardware
             handle = Hardware.Computer()
+        
+            # Habilitar los sensores principales.
             handle.CPUEnabled = True
+            handle.RAMEnabled = True
+            handle.HDDEnabled = True
+            
             handle.Open()
             return handle
         except Exception as e:
             logging.error(f"No se pudo inicializar OpenHardwareMonitor. Error: {e}")
             return None
 
-    def obtener_cpu_temperatura_dll(self):
+    def obtener_metricas_ohm(self):
         """
         Obtiene la temperatura de la CPU usando la DLL de OpenHardwareMonitor.
         """
         if not self.open_hardware_monitor_handle:
-            return None
+            return {} # Retornar un diccionario vacío para evitar errores
+
+        metricas_ohm = {}
+        handle = self.open_hardware_monitor_handle
         
         try:
-            handle = self.open_hardware_monitor_handle
-            handle.CPUEnabled = True
-            handle.Open()
-            
-            for i in handle.Hardware:
-                if i.HardwareType.ToString() == 'CPU':
-                    i.Update()
-                    for sensor in i.Sensors:
-                        if sensor.SensorType.ToString() == 'Temperature' and sensor.Value is not None:
-                            return round(float(sensor.Value), 2)
-        except Exception as e:
-            logging.error(f"Error al obtener temperatura con OpenHardwareMonitor DLL: {e}")
-        
-        return None
+            # Itera sobre los componentes de hardware principales (CPU, RAM, HDD, etc.).
+            for hardware_item in handle.Hardware:
+                hardware_item.Update()  # Actualiza los datos del hardware.
+                
+                # Obtiene el nombre del componente de hardware para una mejor presentación.
+                hw_type_name = openhardwaremonitor_hwtypes.get(hardware_item.HardwareType.ToString(), hardware_item.HardwareType.ToString())
 
+                if hw_type_name == 'CPU':
+                    metricas_ohm['cpu_name'] = hardware_item.Name
+                    for sensor in hardware_item.Sensors:
+                        sensor_type_str = sensor.SensorType.ToString()
+                        sensor_name = sensor.Name
+                        if sensor.Value is None:
+                            continue
+
+                        if sensor_name == 'CPU Package':
+                            if sensor_type_str == 'Temperature':
+                                metricas_ohm['cpu_temperatura_celsius'] = round(float(sensor.Value), 2)
+                            elif sensor_type_str == 'Power':
+                                metricas_ohm['cpu_power_package_watts'] = round(float(sensor.Value), 2)
+                        elif sensor_name == 'CPU Total' and sensor_type_str == 'Load':
+                            metricas_ohm['cpu_load_percent'] = round(float(sensor.Value), 2)
+                        elif sensor_name == 'CPU Cores' and sensor_type_str == 'Power':
+                            metricas_ohm['cpu_power_cores_watts'] = round(float(sensor.Value), 2)
+                        elif sensor_name == 'Bus Speed' and sensor_type_str == 'Clock':
+                            metricas_ohm['cpu_clocks_mhz'] = round(float(sensor.Value), 2)
+
+                elif hw_type_name == 'RAM':
+                    metricas_ohm['ram_name'] = hardware_item.Name
+                    for sensor in hardware_item.Sensors:
+                        sensor_type_str = sensor.SensorType.ToString()
+                        sensor_name = sensor.Name
+                        if sensor.Value is None:
+                            continue
+                        
+                        if sensor_name == 'Used Memory' and sensor_type_str == 'Data':
+                            metricas_ohm['ram_used_gb'] = round(float(sensor.Value), 2)
+                        elif sensor_name == 'Available Memory' and sensor_type_str == 'Data':
+                            metricas_ohm['ram_available_gb'] =round(float(sensor.Value), 2)
+                        elif sensor_name == 'Memory' and sensor_type_str == 'Load':
+                            metricas_ohm['ram_load_percent'] = round(float(sensor.Value), 2)
+
+                elif hw_type_name == 'Disco Duro':
+                    metricas_ohm['hdd_name'] = hardware_item.Name
+                    for sensor in hardware_item.Sensors:
+                        sensor_type_str = sensor.SensorType.ToString()
+                        sensor_name = sensor.Name
+                        if sensor.Value is None:
+                            continue
+
+                        if sensor_name == 'Used Space' and sensor_type_str == 'Load':
+                            metricas_ohm['hdd_used_gb'] = round(float(sensor.Value), 2)
+
+        except Exception as e:
+            logging.error(f"Error al obtener métricas con OpenHardwareMonitor DLL: {e}")
+            return {} # Retornar un diccionario vacío para evitar fallos en el log
+
+        return metricas_ohm
+    
     def obtener_metricas_sistema(self):
         """
         Recopila métricas clave del sistema usando la biblioteca psutil.
@@ -261,47 +342,6 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
             logging.error(f"Error al obtener métricas del sistema: {e}")
             return None
         return metricas
-
-    def obtener_cpu_temperatura(self):
-        """
-        Intenta obtener la temperatura de la CPU usando diferentes métodos en un orden de prioridad.
-        1. OpenHardwareMonitor DLL (nuevo)
-        2. psutil
-        3. WMI (MSAcpi_ThermalZoneTemperature)
-        """
-        
-        # Intento 1: OpenHardwareMonitor DLL
-        temp_dll = self.obtener_cpu_temperatura_dll()
-        if temp_dll is not None:
-            return temp_dll
-        logging.info("La temperatura no se pudo obtener con la DLL de OpenHardwareMonitor.")
-
-        # Intento 2: psutil
-        try:
-            if hasattr(psutil, 'sensors_temperatures'):
-                temps = psutil.sensors_temperatures()
-                if 'coretemp' in temps:
-                    for entry in temps['coretemp']:
-                        if 'cpu' in entry.label.lower() or 'package id' in entry.label.lower():
-                            return round(entry.current, 2)
-            logging.info("La temperatura no se pudo obtener con psutil.")
-        except Exception as e:
-            logging.error(f"Error al obtener temperatura con psutil: {e}")
-
-        # Intento 3: WMI con MSAcpi_ThermalZoneTemperature
-        try:
-            c = wmi.WMI()
-            for temp_sensor in c.MSAcpi_ThermalZoneTemperature():
-                temp_celsius = (temp_sensor.CurrentTemperature / 10) - 273.15
-                return round(temp_celsius, 2)
-            logging.info("La temperatura no se pudo obtener con WMI.")
-        except Exception as e:
-            logging.error(f"Error al obtener temperatura con WMI: {e}")
-
-        # Aquí ya no incluimos los namespaces de WMI para OpenHardwareMonitor/LibreHardwareMonitor
-        # porque la llamada directa a la DLL es más fiable y ya se intentó.
-
-        return None
 
     def obtener_metricas_wmi(self):
         """
@@ -350,21 +390,6 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
             except Exception as e:
                 logging.error(f"Error al obtener métrica de batería: {e}")
                 pass
-
-            # Métrica: tarjeta de red y dirección IP
-            # try:
-            #     for interface in c.Win32_NetworkAdapterConfiguration(IPEnabled=True):
-            #         metricas_wmi['tarjeta_red_descripcion'] = interface.Description
-            #         metricas_wmi['tarjeta_red_ip'] = interface.IPAddress[0] if interface.IPAddress else "N/A"
-            #         break
-            # except Exception as e:
-            #     logging.error(f"Error al obtener métrica de tarjeta de red: {e}")
-            #     pass
-            
-            # Obtener la temperatura de la CPU
-            # temp = self.obtener_cpu_temperatura()
-            # if temp is not None:
-            #     metricas_wmi['cpu_temperatura_celsius'] = temp
 
         except Exception as e:
             logging.error(f"Error al obtener métricas de WMI: {e}")

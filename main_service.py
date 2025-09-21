@@ -129,9 +129,9 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                 # Obtiene la lista de procesos
                 lista_procesos = self.obtener_lista_procesos()
 
-                if metricas_sistema and metricas_wmi:
+                if metricas_sistema and metricas_wmi and metricas_ohm:
                     # Combinamos ambos diccionarios
-                    metricas_combinadas = {**metricas_sistema, **metricas_wmi}
+                    metricas_combinadas = {**metricas_sistema, **metricas_wmi, **metricas_ohm}
                     metricas_combinadas['timestamp'] = datetime.now().isoformat()
                     
                     # Almacena las métricas usando la instancia Singleton
@@ -161,7 +161,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                     # Crea y registra un mensaje con las métricas de OHM
                     mensaje_ohm = (
                         f"OHM CPU: {metricas_ohm.get('cpu_name', 'N/A')}, Load:{metricas_ohm.get('cpu_load_percent', 'N/A')} %, Power: Package:{metricas_ohm.get('cpu_power_package_watts', 'N/A')} W, Cores:{metricas_ohm.get('cpu_power_cores_watts', 'N/A')} W, Bus Speed:{metricas_ohm.get('cpu_clocks_mhz', 'N/A')} Mhz, Temperature:{metricas_ohm.get('cpu_temperatura_celsius', 'N/A')} ºC | "
-                        f"Memory: {metricas_ohm.get('ram_name', 'N/A')}, {metricas_ohm.get('ram_load_percent', 'N/A')} %, Used:{metricas_ohm.get('ram_used_gb', 'N/A')} GB, Available:{metricas_ohm.get('ram_available_gb', 'N/A')} GB | "
+                        f"Memory: {metricas_ohm.get('ram_name', 'N/A')}, {metricas_ohm.get('ram_load_percent', 'N/A')} %, Used:{metricas_ohm.get('ram_load_used_gb', 'N/A')} GB, Free:{metricas_ohm.get('ram_load_free_gb', 'N/A')} GB | "
                         f"Disco Duro: {metricas_ohm.get('hdd_name', 'N/A')}, Used:{metricas_ohm.get('hdd_used_gb', 'N/A')} %"
                     )
                     # (f"OHM")
@@ -281,9 +281,9 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                             continue
                         
                         if sensor_name == 'Used Memory' and sensor_type_str == 'Data':
-                            metricas_ohm['ram_used_gb'] = round(float(sensor.Value), 2)
+                            metricas_ohm['ram_load_used_gb'] = round(float(sensor.Value), 2)
                         elif sensor_name == 'Available Memory' and sensor_type_str == 'Data':
-                            metricas_ohm['ram_available_gb'] =round(float(sensor.Value), 2)
+                            metricas_ohm['ram_load_free_gb'] =round(float(sensor.Value), 2)
                         elif sensor_name == 'Memory' and sensor_type_str == 'Load':
                             metricas_ohm['ram_load_percent'] = round(float(sensor.Value), 2)
 

@@ -153,7 +153,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                         f"WMI: OS={metricas_wmi.get('os_name', 'N/A')}, Arquitecture:{metricas_wmi.get('os_architecture', 'N/A')}, Serial Number:{metricas_wmi.get('os_serial_number', 'N/A')}, Last Boost:{metricas_wmi.get('os_last_boot_up_time', 'N/A')} | "
                         f"Placa Base={metricas_wmi.get('placa_base_producto', 'N/A')}, Fabricante:{metricas_wmi.get('placa_base_fabricante', 'N/A')}, Serial Number:{metricas_wmi.get('placa_base_numero_serie', 'N/A')} | "
                         f"Procesador={metricas_wmi.get('procesador_nombre', 'N/A')},Cores: Logical={metricas_wmi.get('procesador_nucleos_logicos', 'N/A')}, Physical={metricas_wmi.get('procesador_nucleos_fisicos', 'N/A')} | "
-                        f"Batería={metricas_wmi.get('bateria_porcentaje', 'N/A')} (Estado: {metricas_wmi.get('bateria_estado', 'N/A')})"
+                        f"Batería={metricas_wmi.get('bateria_porcentaje', 'N/A')}% (Estado: {metricas_wmi.get('bateria_estado', 'N/A')})"
                     )
                     
                     logging.info(mensaje_wmi)
@@ -384,7 +384,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
             # Métrica: estado de la batería
             try:
                 for battery in c.Win32_Battery():
-                    metricas_wmi['bateria_porcentaje'] = f"{battery.EstimatedChargeRemaining}%"
+                    metricas_wmi['bateria_porcentaje'] = battery.EstimatedChargeRemaining
                     metricas_wmi['bateria_estado'] = battery.BatteryStatus
                     break
             except Exception as e:

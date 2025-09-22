@@ -22,3 +22,10 @@ Ejecutar en CMD con Administrador
   Instalar Servicio -> build/Pruebas/exe.win-amd64-3.13/PythonMonitorAgent.exe --startup auto install
   Iniciar Servicio -> net start "PMA_v1.0"
   Detener Servicio -> net stop "PMA_v1.0"
+
+  - Pruebas
+    Psutil -> python .\Tests\Psutil\main_psutil.py
+    -> python .\Tests\Psutil\main_uso_procesos.py
+    WMI -> python .\Tests\WMI\main_wmi.py
+    OHM -> python .\Tests\OHM\main_dll.py
+    PowerShell -> python .\Tests\PowerShell\main_uso_procesos.py

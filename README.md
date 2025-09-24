@@ -23,6 +23,14 @@ Ejecuta los siguientes comandos en la **línea de comandos (CMD)** con privilegi
   python -m venv .venv
   ```
 
+### Requerimientos del Entorno
+
+- **Guardar requerimientos:**
+
+```bash
+pip freeze > requirements.txt
+```
+
 ### Instalación de Librerías
 
 Puedes instalar las librerías una por una o todas juntas.
@@ -39,6 +47,10 @@ Puedes instalar las librerías una por una o todas juntas.
 - **Instalar todas a la vez:**
   ```bash
   pip install psutil wmi pywin32 pyinstaller cx_Freeze pythonnet
+  ```
+- **Instalar requerimientos:**
+  ```bash
+  pip install -r requirements.txt
   ```
 
 ### Creación y Gestión de Servicios

@@ -30,7 +30,8 @@ class DBManager:
                 self._connection = sqlite3.connect(self._db_path)
                 self._cursor = self._connection.cursor()
                 logging.info(f"Conexión a la base de datos {self._db_path} establecida.")
-                self.create_table()
+                # Llama a la función existente para asegurar que la tabla 'metricas' existe
+                self.create_table() 
             except sqlite3.Error as e:
                 logging.error(f"Error al conectar a la base de datos: {e}")
                 self._connection = None
@@ -85,6 +86,118 @@ class DBManager:
             logging.debug("Tabla 'metricas' verificada/creada exitosamente.")
         except sqlite3.Error as e:
             logging.error(f"Error al crear la tabla: {e}")
+
+    # --- Nueva funcionalidad para info_maquina ---
+
+    def create_machine_info_table(self):
+        """
+        Crea la tabla 'info_maquina' si no existe.
+        Utiliza 'hostname' y 'username' como clave primaria compuesta para el UPSERT.
+        """
+        if not self._connection:
+            logging.error("No hay conexión a la base de datos.")
+            return
+
+        try:
+            self._cursor.execute('''
+                CREATE TABLE IF NOT EXISTS info_maquina (
+                    hostname TEXT NOT NULL,
+                    username TEXT NOT NULL,
+                    timestamp TEXT,
+                    os_name TEXT,
+                    placa_base TEXT,
+                    procesador_nombre TEXT,
+                    cores_logicos INTEGER,
+                    cores_fisicos INTEGER,
+                    fecha_arranque TEXT,
+                    PRIMARY KEY (hostname, username)
+                )
+            ''')
+            self._connection.commit()
+            logging.debug("Tabla 'info_maquina' verificada/creada exitosamente.")
+        except sqlite3.Error as e:
+            logging.error(f"Error al crear la tabla 'info_maquina': {e}")
+
+
+    def upsert_machine_info(self, data):
+        """
+        Inserta o actualiza la información estática/semi-estática de la máquina en la tabla 'info_maquina'.
+        La lógica de actualización/inserción (UPSERT) se basa en la coincidencia de 'hostname' y 'username'.
+        Combina 'placa_base_fabricante' y 'placa_base_producto' en el campo 'placa_base'.
+
+        :param data: Diccionario con la información de la máquina.
+        """
+        if not self._connection:
+            logging.error("No hay conexión a la base de datos.")
+            return
+
+        # 1. Verificar/Crear la tabla 'info_maquina' si no existe.
+        self.create_machine_info_table()
+
+        try:
+            # 2. Lógica para combinar la Placa Base
+            placa_base_fabricante = data.get('placa_base_fabricante', 'Desconocido')
+            placa_base_producto = data.get('placa_base_producto', 'Desconocido')
+            
+            # Formato: Fabricante - Producto. Se elimina el separador si ambos son 'Desconocido'.
+            if placa_base_fabricante == 'Desconocido' and placa_base_producto == 'Desconocido':
+                placa_base_combined = 'Desconocido'
+            else:
+                placa_base_combined = f"{placa_base_fabricante} - {placa_base_producto}".replace("Desconocido - ", "").replace(" - Desconocido", "")
+
+
+            # Columnas a insertar/actualizar
+            cols = [
+                'hostname', 
+                'username', 
+                'timestamp', 
+                'os_name', 
+                'placa_base', 
+                'procesador_nombre', 
+                'cores_logicos', 
+                'cores_fisicos', 
+                'fecha_arranque'
+            ]
+
+            # Valores a insertar (asegúrate de que las keys de 'data' coincidan con estas)
+            values = (
+                data.get('hostname'),
+                data.get('username'),
+                data.get('timestamp'),
+                data.get('os_name'),
+                placa_base_combined, 
+                data.get('procesador_nombre'),
+                data.get('procesador_nucleos_logicos'),
+                data.get('procesador_nucleos_fisicos'),
+                data.get('os_last_boot_up_time')
+            )
+
+            # Usamos ON CONFLICT DO UPDATE para el UPSERT
+            # Si hay un conflicto en (hostname, username), actualiza las demás columnas.
+            sql_query = f'''
+                INSERT INTO info_maquina ({', '.join(cols)})
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (hostname, username) DO UPDATE SET
+                    timestamp = excluded.timestamp,
+                    os_name = excluded.os_name, -- Columna 'os_name' actualizada
+                    placa_base = excluded.placa_base,
+                    procesador_nombre = excluded.procesador_nombre,
+                    cores_logicos = excluded.cores_logicos,
+                    cores_fisicos = excluded.cores_fisicos,
+                    fecha_arranque = excluded.fecha_arranque
+            '''
+
+            self._cursor.execute(sql_query, values)
+            self._connection.commit()
+            logging.debug(f"Información de máquina UPSERT completada para host: {data.get('hostname')}, user: {data.get('username')}.")
+
+        except sqlite3.Error as e:
+            logging.error(f"Error al insertar/actualizar la información de la máquina: {e}")
+        except Exception as e:
+            logging.error(f"Error inesperado al procesar los datos de la máquina: {e}")
+
+    # --- Fin de la nueva funcionalidad ---
+
 
     def insert_metrics(self, data):
         """Inserta un nuevo registro de métricas en la base de datos."""

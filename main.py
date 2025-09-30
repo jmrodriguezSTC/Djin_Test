@@ -122,6 +122,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
 
                     # Almacena las métricas usando la instancia Singleton
                     db_manager.insert_metrics(metricas_combinadas)
+                    db_manager.upsert_machine_info(metricas_combinadas)
 
                     # Crea y registra un mensaje con las métricas de psutil
                     mensaje_psutil = (

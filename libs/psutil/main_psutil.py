@@ -38,6 +38,7 @@ def obtener_metricas_psutil():
         metricas['red_bytes_recibidos'] = red.bytes_recv
         users = psutil.users()[0]
         metricas['username'] = users.name if users else "n/a"
+        metricas['user_datetime'] = users.started if users else "n/a"
 
     except Exception as e:
         logging.error(f"Error al obtener métricas del sistema: {e}")

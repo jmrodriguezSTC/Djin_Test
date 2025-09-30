@@ -36,6 +36,8 @@ def obtener_metricas_psutil():
         red = psutil.net_io_counters()
         metricas['red_bytes_enviados'] = red.bytes_sent
         metricas['red_bytes_recibidos'] = red.bytes_recv
+        users = psutil.users()[0]
+        metricas['username'] = users.name if users else "n/a"
 
     except Exception as e:
         logging.error(f"Error al obtener métricas del sistema: {e}")

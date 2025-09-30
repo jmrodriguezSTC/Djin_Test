@@ -52,6 +52,8 @@ class DBManager:
             self._cursor.execute('''
                 CREATE TABLE IF NOT EXISTS metricas (
                     timestamp TEXT PRIMARY KEY,
+                    hostname TEXT,
+                    username TEXT,
                     cpu_percent REAL,
                     cpu_load_percent REAL,
                     cpu_freq REAL,
@@ -94,6 +96,8 @@ class DBManager:
             self._cursor.execute('''
                 INSERT INTO metricas (
                     timestamp,
+                    hostname,
+                    username,
                     cpu_percent,
                     cpu_load_percent,
                     cpu_freq,
@@ -119,9 +123,11 @@ class DBManager:
                     cpu_power_cores,
                     cpu_clocks,
                     hdd_used
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 data.get('timestamp'),
+                data.get('hostname'),
+                data.get('username'),
                 data.get('cpu_percent'),
                 data.get('cpu_load_percent'),
                 data.get('cpu_freq_current_mhz'),

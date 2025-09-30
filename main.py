@@ -118,6 +118,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                     # Combinamos ambos diccionarios
                     metricas_combinadas = {**metricas_psutil, **metricas_wmi, **metricas_ohm}
                     metricas_combinadas['timestamp'] = datetime.now().isoformat()
+                    metricas_combinadas['hostname'] = socket.gethostname()
 
                     # Almacena las métricas usando la instancia Singleton
                     db_manager.insert_metrics(metricas_combinadas)

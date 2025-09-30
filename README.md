@@ -73,6 +73,10 @@ Estos comandos te ayudarán a construir y gestionar el servicio del proyecto.
   ```bash
   net stop "PMA_v1.0"
   ```
+- **Eliminar servicio**
+  ´´´bash
+  sc delete "my_service"
+  ´´´
 
 ---
 

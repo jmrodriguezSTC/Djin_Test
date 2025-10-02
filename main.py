@@ -11,7 +11,7 @@ import sys
 import pythoncom
 from datetime import datetime
 # Importaciones de los módulos creados
-from sqlite.main_sqlite import DBManager
+from main_duckdb import DBManager
 from libs.psutil.main_psutil import (
     obtener_metricas_psutil,
     obtener_lista_procesos
@@ -87,7 +87,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
 
         # Obtiene la ruta base para los archivos de datos
         base_dir = _find_dir()
-        db_path = os.path.join(base_dir, "data", "monitoreo.db")
+        db_path = os.path.join(base_dir, "data", "monitoreo.duckdb")
         dll_path = os.path.join(base_dir, "libs", "ohm", "OpenHardwareMonitorLib.dll")
 
         # Obtiene la instancia del Singleton. Esto crea la conexión la primera vez.
@@ -119,6 +119,8 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                     metricas_combinadas = {**metricas_psutil, **metricas_wmi, **metricas_ohm}
                     metricas_combinadas['timestamp'] = datetime.now().isoformat()
                     metricas_combinadas['hostname'] = socket.gethostname()
+                    # NOTA: Se asume que 'username' está incluido en una de las métricas (_psutil, _wmi, _ohm)
+                    # según lo confirmado para la función upsert_machine_info.
 
                     # Almacena las métricas usando la instancia Singleton
                     db_manager.insert_metrics(metricas_combinadas)
@@ -162,6 +164,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                             logging.warning(f"  - PID: {proc['pid']} | Nombre: {proc['name']}")
                     else:
                         logging.info(f"Número de procesos en ejecución: {len(lista_procesos)}")
+                
             except Exception as e:
                 logging.error(f"Error en el bucle principal: {e}")
             finally:

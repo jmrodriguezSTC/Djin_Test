@@ -3,7 +3,7 @@ from cx_Freeze import setup, Executable
 
 # Definir las dependencias que se incluirán en el paquete
 build_exe_options = {
-    "packages": ["os", "sys", "psutil", "wmi", "configparser", "logging", "sqlite3", "pythoncom", "servicemanager", ],
+    "packages": ["os", "sys", "psutil", "wmi", "configparser", "logging", "duckdb", "pythoncom", "servicemanager", ],
     "excludes": ["tkinter"],
     "include_files": [
         ("configs", "configs"),  # Incluye la carpeta configs

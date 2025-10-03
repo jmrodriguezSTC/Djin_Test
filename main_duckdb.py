@@ -80,16 +80,12 @@ class DBManager:
                     hostname TEXT,
                     username TEXT,
                     cpu_percent DOUBLE,
-                    cpu_load_percent DOUBLE,
                     cpu_freq DOUBLE,
                     ram_percent DOUBLE,
-                    ram_load_percent DOUBLE,
                     ram_used DOUBLE,
-                    ram_load_used DOUBLE,
                     ram_total DOUBLE,
                     ram_free DOUBLE,
-                    ram_load_free DOUBLE,
-                    disco_percent DOUBLE,
+                    disk_percent DOUBLE,
                     disk_used DOUBLE,
                     disk_total DOUBLE,
                     disk_free DOUBLE,
@@ -102,8 +98,7 @@ class DBManager:
                     battery_percent DOUBLE,
                     cpu_power_package DOUBLE,
                     cpu_power_cores DOUBLE,
-                    cpu_clocks DOUBLE,
-                    hdd_used DOUBLE
+                    cpu_clocks DOUBLE
                 )
             """)
             logging.debug("Tabla 'metricas' verificada/creada exitosamente en DuckDB.")
@@ -221,6 +216,12 @@ class DBManager:
             return
 
         try:
+            cpu_percent = data.get('cpu_percent') or data.get('cpu_freq_current_mhz') or 0
+            ram_percent = data.get('memoria_percent') or data.get('ram_load_percent') or 0
+            ram_used = data.get('memoria_usada_gb') or data.get('ram_load_used_gb') or 0
+            ram_free = data.get('memoria_libre_gb') or data.get('ram_load_free_gb') or 0
+            disk_percent = data.get('disco_percent') or data.get('hdd_used_gb') or 0
+
             # La consulta se mantiene igual, solo se utiliza el objeto de conexión de DuckDB.
             self._connection.execute("""
                 INSERT INTO metricas (
@@ -228,16 +229,12 @@ class DBManager:
                     hostname,
                     username,
                     cpu_percent,
-                    cpu_load_percent,
                     cpu_freq,
                     ram_percent,
-                    ram_load_percent,
                     ram_used,
-                    ram_load_used,
                     ram_total,
                     ram_free,
-                    ram_load_free,
-                    disco_percent,
+                    disk_percent,
                     disk_used,
                     disk_total,
                     disk_free,
@@ -250,24 +247,19 @@ class DBManager:
                     battery_percent,
                     cpu_power_package,
                     cpu_power_cores,
-                    cpu_clocks,
-                    hdd_used
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    cpu_clocks
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 data.get('timestamp'),
                 data.get('hostname'),
-                data.get('username'), # Confirmado que está presente en data
-                data.get('cpu_percent'),
-                data.get('cpu_load_percent'),
+                data.get('username'),
+                cpu_percent,
                 data.get('cpu_freq_current_mhz'),
-                data.get('memoria_percent'),
-                data.get('ram_load_percent'),
-                data.get('memoria_usada_gb'),
-                data.get('ram_load_used_gb'),
+                ram_percent,
+                ram_used,
                 data.get('memoria_total_gb'),
-                data.get('memoria_libre_gb'),
-                data.get('ram_load_free_gb'),
-                data.get('disco_percent'),
+                ram_free,
+                disk_percent,
                 data.get('disco_usado_gb'),
                 data.get('disco_total_gb'),
                 data.get('disco_libre_gb'),
@@ -280,8 +272,7 @@ class DBManager:
                 data.get('bateria_porcentaje'),
                 data.get('cpu_power_package_watts'),
                 data.get('cpu_power_cores_watts'),
-                data.get('cpu_clocks_mhz'),
-                data.get('hdd_used_gb')
+                data.get('cpu_clocks_mhz')
             ))
             logging.debug("Métricas insertadas en DuckDB.")
 

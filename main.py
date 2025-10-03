@@ -57,13 +57,16 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
     def SvcStop(self):
         """
         Detiene el servicio y notifica al sistema.
+        
+        MODIFICACIÓN: Se elimina la llamada a close_connection() ya que la conexión
+        DuckDB es transitoria en DBManager y se cierra automáticamente después de cada
+        inserción de métricas, evitando bloqueos.
         """
         self.is_running = False
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.hWaitStop)
-        # Cierra la conexión de la base de datos usando el Singleton
-        db_manager = DBManager()
-        db_manager.close_connection()
+        # db_manager = DBManager() # Ya no se requiere llamar a close_connection
+        # db_manager.close_connection() # Línea eliminada/comentada
 
     def SvcDoRun(self):
         """
@@ -90,7 +93,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         db_path = os.path.join(base_dir, "data", "monitoreo.duckdb")
         dll_path = os.path.join(base_dir, "libs", "ohm", "OpenHardwareMonitorLib.dll")
 
-        # Obtiene la instancia del Singleton. Esto crea la conexión la primera vez.
+        # Obtiene la instancia del Singleton. Solo pasa la ruta.
         db_manager = DBManager(db_path)
 
         # Inicializar el handle de OpenHardwareMonitor una sola vez
@@ -99,6 +102,10 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         except Exception as e:
             logging.error(f"Error al inicializar OpenHardwareMonitor: {e}")
             self.open_hardware_monitor_handle = None
+            
+        # Al iniciar el bucle, asegurar que las tablas existen (utiliza la conexión transitoria)
+        db_manager.create_table()
+        db_manager.create_machine_info_table()
 
         while self.is_running:
             try:
@@ -122,10 +129,11 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                     # NOTA: Se asume que 'username' está incluido en una de las métricas (_psutil, _wmi, _ohm)
                     # según lo confirmado para la función upsert_machine_info.
 
-                    # Almacena las métricas usando la instancia Singleton
+                    # Almacena las métricas usando la instancia Singleton (transitorio)
                     db_manager.insert_metrics(metricas_combinadas)
                     db_manager.upsert_machine_info(metricas_combinadas)
-
+                    
+                    # ... (rest of logging logic, unchanged)
                     cpu_percent = metricas_combinadas.get('cpu_percent') or metricas_combinadas.get('cpu_freq_current_mhz') or 0
                     ram_percent = metricas_combinadas.get('memoria_percent') or metricas_combinadas.get('ram_load_percent') or 0
                     ram_used = metricas_combinadas.get('memoria_usada_gb') or metricas_combinadas.get('ram_load_used_gb') or 0
@@ -154,6 +162,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                         f" | Battery %: {metricas_combinadas.get('bateria_porcentaje', 0)}"
                         f" | CPU W: {metricas_combinadas.get('cpu_power_package_watts', 0)}"
                         f" | CPU Core W: {metricas_combinadas.get('cpu_power_cores_watts', 0)}"
+                        f" | CPU Core W: {metricas_combinadas.get('cpu_clocks_mhz', 0)}"
                     )
 
                     logging.info(mensaje)
@@ -196,7 +205,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                     #         logging.warning(f"  - PID: {proc['pid']} | Nombre: {proc['name']}")
                     # else:
                     #     logging.info(f"Número de procesos en ejecución: {len(lista_procesos)}")
-                
+
             except Exception as e:
                 logging.error(f"Error en el bucle principal: {e}")
             finally:

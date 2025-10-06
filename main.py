@@ -143,6 +143,8 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                     # Crea y registra un mensaje con las métricas combinadas
                     mensaje = (
                         # f"Métricas almacenadas en la base de datos: "
+                        f"Hostname: {metricas_combinadas.get('hostname', 'N/A')}"
+                        f" | User: {metricas_combinadas.get('username', 'N/A')} | "
                         f"CPU %: {cpu_percent}"
                         f" | CPU MHz: {metricas_combinadas.get('cpu_freq_current_mhz', 0)}"
                         f" | CPU Bus MHz: {metricas_combinadas.get('cpu_clocks_mhz', 0)}"

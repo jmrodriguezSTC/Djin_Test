@@ -57,16 +57,10 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
     def SvcStop(self):
         """
         Detiene el servicio y notifica al sistema.
-        
-        MODIFICACIÓN: Se elimina la llamada a close_connection() ya que la conexión
-        DuckDB es transitoria en DBManager y se cierra automáticamente después de cada
-        inserción de métricas, evitando bloqueos.
         """
         self.is_running = False
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.hWaitStop)
-        # db_manager = DBManager() # Ya no se requiere llamar a close_connection
-        # db_manager.close_connection() # Línea eliminada/comentada
 
     def SvcDoRun(self):
         """
@@ -90,10 +84,11 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
 
         # Obtiene la ruta base para los archivos de datos
         base_dir = _find_dir()
+        # Se pasa la ruta de la DB principal
         db_path = os.path.join(base_dir, "data", "monitoreo.duckdb")
         dll_path = os.path.join(base_dir, "libs", "ohm", "OpenHardwareMonitorLib.dll")
 
-        # Obtiene la instancia del Singleton. Solo pasa la ruta.
+        # Obtiene la instancia del Singleton. La ruta de cola es calculada internamente.
         db_manager = DBManager(db_path)
 
         # Inicializar el handle de OpenHardwareMonitor una sola vez
@@ -103,9 +98,13 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
             logging.error(f"Error al inicializar OpenHardwareMonitor: {e}")
             self.open_hardware_monitor_handle = None
             
-        # Al iniciar el bucle, asegurar que las tablas existen (utiliza la conexión transitoria)
+        # Al iniciar, asegurar que las tablas existen
         db_manager.create_table()
         db_manager.create_machine_info_table()
+
+        # MODIFICACIÓN: Intentar vaciar la cola inmediatamente después de iniciar,
+        # en caso de que existan datos de una ejecución previa interrumpida.
+        db_manager.process_queue()
 
         while self.is_running:
             try:
@@ -126,10 +125,9 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                     metricas_combinadas = {**metricas_psutil, **metricas_wmi, **metricas_ohm}
                     metricas_combinadas['timestamp'] = datetime.now().isoformat()
                     metricas_combinadas['hostname'] = socket.gethostname()
-                    # NOTA: Se asume que 'username' está incluido en una de las métricas (_psutil, _wmi, _ohm)
-                    # según lo confirmado para la función upsert_machine_info.
-
-                    # Almacena las métricas usando la instancia Singleton (transitorio)
+                    
+                    # Almacena las métricas usando la instancia Singleton.
+                    # Estos métodos ahora contienen la lógica de Fallback a Cola.
                     db_manager.insert_metrics(metricas_combinadas)
                     db_manager.upsert_machine_info(metricas_combinadas)
                     
@@ -142,7 +140,6 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
 
                     # Crea y registra un mensaje con las métricas combinadas
                     mensaje = (
-                        # f"Métricas almacenadas en la base de datos: "
                         f"Hostname: {metricas_combinadas.get('hostname', 'N/A')}"
                         f" | User: {metricas_combinadas.get('username', 'N/A')} | "
                         f"CPU %: {cpu_percent}"
@@ -208,6 +205,9 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                     # else:
                     #     logging.info(f"Número de procesos en ejecución: {len(lista_procesos)}")
 
+                    # Los bloques de logging de psutil, wmi y ohm se mantienen comentados
+                    # para evitar una salida excesivamente verbosa, según el código original.
+                    
             except Exception as e:
                 logging.error(f"Error en el bucle principal: {e}")
             finally:

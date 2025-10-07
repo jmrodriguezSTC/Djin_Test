@@ -124,44 +124,78 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                     db_manager.insert_metrics(metricas_combinadas)
                     db_manager.upsert_machine_info(metricas_combinadas)
 
-                    # Crea y registra un mensaje con las métricas de psutil
-                    mensaje_psutil = (
-                        f"CPU: {metricas_psutil['cpu_percent']}%, Cores: Logical[{metricas_psutil['cpu_core_logical']}] Physical[{metricas_psutil['cpu_core_physical']}], Freq: Current[{metricas_psutil['cpu_freq_current_mhz']:.2f}Mhz], Min[{metricas_psutil['cpu_freq_min_mhz']:.2f}Mhz], Max[{metricas_psutil['cpu_freq_max_mhz']:.2f}Mhz] | "
-                        f"RAM: {metricas_psutil['memoria_percent']}% ({metricas_psutil['memoria_usada_gb']}/{metricas_psutil['memoria_total_gb']} GB, Free:{metricas_psutil['memoria_libre_gb']} GB) | "
-                        f"Swap: {metricas_psutil['swap_percent']}% ({metricas_psutil['swap_usado_gb']}/{metricas_psutil['swap_total_gb']} GB) | "
-                        f"Disco C: {metricas_psutil['disco_percent']}% ({metricas_psutil['disco_usado_gb']}/{metricas_psutil['disco_total_gb']} GB, Free:{metricas_psutil['disco_libre_gb']} GB) | "
-                        f"Red (Bytes): Enviados={metricas_psutil['red_bytes_enviados']}, Recibidos={metricas_psutil['red_bytes_recibidos']}"
+                    cpu_percent = metricas_combinadas.get('cpu_percent') or metricas_combinadas.get('cpu_freq_current_mhz') or 0
+                    ram_percent = metricas_combinadas.get('memoria_percent') or metricas_combinadas.get('ram_load_percent') or 0
+                    ram_used = metricas_combinadas.get('memoria_usada_gb') or metricas_combinadas.get('ram_load_used_gb') or 0
+                    ram_free = metricas_combinadas.get('memoria_libre_gb') or metricas_combinadas.get('ram_load_free_gb') or 0
+                    disk_percent = metricas_combinadas.get('disco_percent') or metricas_combinadas.get('hdd_used_gb') or 0
+
+                    # Crea y registra un mensaje con las métricas combinadas
+                    mensaje = (
+                        f"Hostname: {metricas_combinadas.get('hostname', 'N/A')}"
+                        f" | User: {metricas_combinadas.get('username', 'N/A')}"
+                        f" | CPU %: {cpu_percent}"
+                        f" | CPU MHz: {metricas_combinadas.get('cpu_freq_current_mhz', 0)}"
+                        f" | CPU Bus MHz: {metricas_combinadas.get('cpu_clocks_mhz', 0)}"
+                        f" | RAM %: {ram_percent}"
+                        f" | RAM Used GB: {ram_used}"
+                        f" | RAM Total GB: {metricas_combinadas.get('memoria_total_gb', 0)}"
+                        f" | RAM free GB: {ram_free}"
+                        f" | Disco %: {disk_percent}"
+                        f" | Disco Used GB: {metricas_combinadas.get('disco_usado_gb', 0)}"
+                        f" | Disco Total GB: {metricas_combinadas.get('disco_total_gb', 0)}"
+                        f" | Disco Free GB: {metricas_combinadas.get('disco_libre_gb', 0)}"
+                        f" | SWAP %: {metricas_combinadas.get('swap_percent', 0)}"
+                        f" | SWAP Used GB: {metricas_combinadas.get('swap_usado_gb', 0)}"
+                        f" | SWAP Total GB: {metricas_combinadas.get('swap_total_gb', 0)}"
+                        f" | Red Bytes: Sent: {metricas_combinadas.get('red_bytes_enviados', 0)} - Recv: {metricas_combinadas.get('red_bytes_recibidos', 0)}"
+                        f" | CPU ºC: {metricas_combinadas.get('cpu_temperatura_celsius', 0)}"
+                        f" | Battery %: {metricas_combinadas.get('bateria_porcentaje', 0)}"
+                        f" | CPU W: {metricas_combinadas.get('cpu_power_package_watts', 0)}"
+                        f" | CPU Core W: {metricas_combinadas.get('cpu_power_cores_watts', 0)}"
+                        f" | CPU Core W: {metricas_combinadas.get('cpu_clocks_mhz', 0)}"
                     )
+
+                    logging.info(mensaje)
+
+                    # Crea y registra un mensaje con las métricas de psutil
+                    # mensaje_psutil = (
+                    #     f"CPU: {metricas_psutil['cpu_percent']}%, Cores: Logical[{metricas_psutil['cpu_core_logical']}] Physical[{metricas_psutil['cpu_core_physical']}], Freq: Current[{metricas_psutil['cpu_freq_current_mhz']:.2f}Mhz], Min[{metricas_psutil['cpu_freq_min_mhz']:.2f}Mhz], Max[{metricas_psutil['cpu_freq_max_mhz']:.2f}Mhz] | "
+                    #     f"RAM: {metricas_psutil['memoria_percent']}% ({metricas_psutil['memoria_usada_gb']}/{metricas_psutil['memoria_total_gb']} GB, Free:{metricas_psutil['memoria_libre_gb']} GB) | "
+                    #     f"Swap: {metricas_psutil['swap_percent']}% ({metricas_psutil['swap_usado_gb']}/{metricas_psutil['swap_total_gb']} GB) | "
+                    #     f"Disco C: {metricas_psutil['disco_percent']}% ({metricas_psutil['disco_usado_gb']}/{metricas_psutil['disco_total_gb']} GB, Free:{metricas_psutil['disco_libre_gb']} GB) | "
+                    #     f"Red (Bytes): Enviados={metricas_psutil['red_bytes_enviados']}, Recibidos={metricas_psutil['red_bytes_recibidos']}"
+                    # )
                     
-                    logging.info(mensaje_psutil)
+                    # logging.info(mensaje_psutil)
 
                     # Crea y registra un mensaje con las métricas de WMI
-                    mensaje_wmi = (
-                        f"WMI: OS={metricas_wmi.get('os_name', 'N/A')}, Arquitecture:{metricas_wmi.get('os_architecture', 'N/A')}, Serial Number:{metricas_wmi.get('os_serial_number', 'N/A')}, Last Boost:{metricas_wmi.get('os_last_boot_up_time', 'N/A')} | "
-                        f"Placa Base={metricas_wmi.get('placa_base_producto', 'N/A')}, Fabricante:{metricas_wmi.get('placa_base_fabricante', 'N/A')}, Serial Number:{metricas_wmi.get('placa_base_numero_serie', 'N/A')} | "
-                        f"Procesador={metricas_wmi.get('procesador_nombre', 'N/A')},Cores: Logical={metricas_wmi.get('procesador_nucleos_logicos', 'N/A')}, Physical={metricas_wmi.get('procesador_nucleos_fisicos', 'N/A')} | "
-                        f"Batería={metricas_wmi.get('bateria_porcentaje', 'N/A')}% (Estado: {metricas_wmi.get('bateria_estado', 'N/A')})"
-                    )
+                    # mensaje_wmi = (
+                    #     f"WMI: OS={metricas_wmi.get('os_name', 'N/A')}, Arquitecture:{metricas_wmi.get('os_architecture', 'N/A')}, Serial Number:{metricas_wmi.get('os_serial_number', 'N/A')}, Last Boost:{metricas_wmi.get('os_last_boot_up_time', 'N/A')} | "
+                    #     f"Placa Base={metricas_wmi.get('placa_base_producto', 'N/A')}, Fabricante:{metricas_wmi.get('placa_base_fabricante', 'N/A')}, Serial Number:{metricas_wmi.get('placa_base_numero_serie', 'N/A')} | "
+                    #     f"Procesador={metricas_wmi.get('procesador_nombre', 'N/A')},Cores: Logical={metricas_wmi.get('procesador_nucleos_logicos', 'N/A')}, Physical={metricas_wmi.get('procesador_nucleos_fisicos', 'N/A')} | "
+                    #     f"Batería={metricas_wmi.get('bateria_porcentaje', 'N/A')}% (Estado: {metricas_wmi.get('bateria_estado', 'N/A')})"
+                    # )
                     
-                    logging.info(mensaje_wmi)
+                    # logging.info(mensaje_wmi)
 
                     # Crea y registra un mensaje con las métricas de OHM
-                    mensaje_ohm = (
-                        f"OHM CPU: {metricas_ohm.get('cpu_name', 'N/A')}, Load:{metricas_ohm.get('cpu_load_percent', 'N/A')} %, Power: Package:{metricas_ohm.get('cpu_power_package_watts', 'N/A')} W, Cores:{metricas_ohm.get('cpu_power_cores_watts', 'N/A')} W, Bus Speed:{metricas_ohm.get('cpu_clocks_mhz', 'N/A')} Mhz, Temperature:{metricas_ohm.get('cpu_temperatura_celsius', 'N/A')} ºC | "
-                        f"Memory: {metricas_ohm.get('ram_name', 'N/A')}, {metricas_ohm.get('ram_load_percent', 'N/A')} %, Used:{metricas_ohm.get('ram_load_used_gb', 'N/A')} GB, Free:{metricas_ohm.get('ram_load_free_gb', 'N/A')} GB | "
-                        f"Disco Duro: {metricas_ohm.get('hdd_name', 'N/A')}, Used:{metricas_ohm.get('hdd_used_gb', 'N/A')} %"
-                    )
+                    # mensaje_ohm = (
+                    #     f"OHM CPU: {metricas_ohm.get('cpu_name', 'N/A')}, Load:{metricas_ohm.get('cpu_load_percent', 'N/A')} %, Power: Package:{metricas_ohm.get('cpu_power_package_watts', 'N/A')} W, Cores:{metricas_ohm.get('cpu_power_cores_watts', 'N/A')} W, Bus Speed:{metricas_ohm.get('cpu_clocks_mhz', 'N/A')} Mhz, Temperature:{metricas_ohm.get('cpu_temperatura_celsius', 'N/A')} ºC | "
+                    #     f"Memory: {metricas_ohm.get('ram_name', 'N/A')}, {metricas_ohm.get('ram_load_percent', 'N/A')} %, Used:{metricas_ohm.get('ram_load_used_gb', 'N/A')} GB, Free:{metricas_ohm.get('ram_load_free_gb', 'N/A')} GB | "
+                    #     f"Disco Duro: {metricas_ohm.get('hdd_name', 'N/A')}, Used:{metricas_ohm.get('hdd_used_gb', 'N/A')} %"
+                    # )
 
-                    logging.info(mensaje_ohm)
+                    # logging.info(mensaje_ohm)
 
                     # Loguea la lista de procesos según la condición de CPU
-                    if metricas_psutil['cpu_percent'] > 95:
-                        logging.warning(f"ALERTA: Alto uso de CPU! Procesos en ejecución ({len(lista_procesos)} total):")
-                        # Limita la salida a 10 procesos para evitar logs demasiado grandes
-                        for i, proc in enumerate(lista_procesos[:10]):
-                            logging.warning(f"  - PID: {proc['pid']} | Nombre: {proc['name']}")
-                    else:
-                        logging.info(f"Número de procesos en ejecución: {len(lista_procesos)}")
+                    # if metricas_psutil['cpu_percent'] > 95:
+                    #     logging.warning(f"ALERTA: Alto uso de CPU! Procesos en ejecución ({len(lista_procesos)} total):")
+                    #     # Limita la salida a 10 procesos para evitar logs demasiado grandes
+                    #     for i, proc in enumerate(lista_procesos[:10]):
+                    #         logging.warning(f"  - PID: {proc['pid']} | Nombre: {proc['name']}")
+                    # else:
+                    #     logging.info(f"Número de procesos en ejecución: {len(lista_procesos)}")
             except Exception as e:
                 logging.error(f"Error en el bucle principal: {e}")
             finally:

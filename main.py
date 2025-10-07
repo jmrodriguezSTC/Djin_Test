@@ -11,7 +11,8 @@ import sys
 import pythoncom
 from datetime import datetime
 # Importaciones de los módulos creados
-from sqlite.main_sqlite import DBManager
+# CAMBIO: Usar DuckDBManager en lugar de DBManager de SQLite
+from main_duckdb import DuckDBManager
 from libs.psutil.main_psutil import (
     obtener_metricas_psutil,
     obtener_lista_procesos
@@ -61,9 +62,8 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         self.is_running = False
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.hWaitStop)
-        # Cierra la conexión de la base de datos usando el Singleton
-        db_manager = DBManager()
-        db_manager.close_connection()
+        # CAMBIO: Llamar al método de limpieza de la instancia DuckDBManager
+        DuckDBManager.close_instance() 
 
     def SvcDoRun(self):
         """
@@ -87,11 +87,12 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
 
         # Obtiene la ruta base para los archivos de datos
         base_dir = _find_dir()
-        db_path = os.path.join(base_dir, "data", "monitoreo.db")
+        
+        # db_path ya no se usa, pero base_dir es necesario para el DuckDBManager
         dll_path = os.path.join(base_dir, "libs", "ohm", "OpenHardwareMonitorLib.dll")
 
-        # Obtiene la instancia del Singleton. Esto crea la conexión la primera vez.
-        db_manager = DBManager(db_path)
+        # CAMBIO: Obtiene la instancia de DuckDBManager usando el directorio base
+        db_manager = DuckDBManager(base_dir)
 
         # Inicializar el handle de OpenHardwareMonitor una sola vez
         try:
@@ -120,7 +121,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                     metricas_combinadas['timestamp'] = datetime.now().isoformat()
                     metricas_combinadas['hostname'] = socket.gethostname()
 
-                    # Almacena las métricas usando la instancia Singleton
+                    # Almacena las métricas usando la instancia Singleton (ahora en Parquet)
                     db_manager.insert_metrics(metricas_combinadas)
                     db_manager.upsert_machine_info(metricas_combinadas)
 
@@ -130,7 +131,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                     ram_free = metricas_combinadas.get('memoria_libre_gb') or metricas_combinadas.get('ram_load_free_gb') or 0
                     disk_percent = metricas_combinadas.get('disco_percent') or metricas_combinadas.get('hdd_used_gb') or 0
 
-                    # Crea y registra un mensaje con las métricas combinadas
+                    # Crea y registra un mensaje con las métricas combinadas (logueo sin cambios)
                     mensaje = (
                         f"Hostname: {metricas_combinadas.get('hostname', 'N/A')}"
                         f" | User: {metricas_combinadas.get('username', 'N/A')}"
@@ -158,50 +159,15 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
 
                     logging.info(mensaje)
 
-                    # Crea y registra un mensaje con las métricas de psutil
-                    # mensaje_psutil = (
-                    #     f"CPU: {metricas_psutil['cpu_percent']}%, Cores: Logical[{metricas_psutil['cpu_core_logical']}] Physical[{metricas_psutil['cpu_core_physical']}], Freq: Current[{metricas_psutil['cpu_freq_current_mhz']:.2f}Mhz], Min[{metricas_psutil['cpu_freq_min_mhz']:.2f}Mhz], Max[{metricas_psutil['cpu_freq_max_mhz']:.2f}Mhz] | "
-                    #     f"RAM: {metricas_psutil['memoria_percent']}% ({metricas_psutil['memoria_usada_gb']}/{metricas_psutil['memoria_total_gb']} GB, Free:{metricas_psutil['memoria_libre_gb']} GB) | "
-                    #     f"Swap: {metricas_psutil['swap_percent']}% ({metricas_psutil['swap_usado_gb']}/{metricas_psutil['swap_total_gb']} GB) | "
-                    #     f"Disco C: {metricas_psutil['disco_percent']}% ({metricas_psutil['disco_usado_gb']}/{metricas_psutil['disco_total_gb']} GB, Free:{metricas_psutil['disco_libre_gb']} GB) | "
-                    #     f"Red (Bytes): Enviados={metricas_psutil['red_bytes_enviados']}, Recibidos={metricas_psutil['red_bytes_recibidos']}"
-                    # )
-                    
-                    # logging.info(mensaje_psutil)
-
-                    # Crea y registra un mensaje con las métricas de WMI
-                    # mensaje_wmi = (
-                    #     f"WMI: OS={metricas_wmi.get('os_name', 'N/A')}, Arquitecture:{metricas_wmi.get('os_architecture', 'N/A')}, Serial Number:{metricas_wmi.get('os_serial_number', 'N/A')}, Last Boost:{metricas_wmi.get('os_last_boot_up_time', 'N/A')} | "
-                    #     f"Placa Base={metricas_wmi.get('placa_base_producto', 'N/A')}, Fabricante:{metricas_wmi.get('placa_base_fabricante', 'N/A')}, Serial Number:{metricas_wmi.get('placa_base_numero_serie', 'N/A')} | "
-                    #     f"Procesador={metricas_wmi.get('procesador_nombre', 'N/A')},Cores: Logical={metricas_wmi.get('procesador_nucleos_logicos', 'N/A')}, Physical={metricas_wmi.get('procesador_nucleos_fisicos', 'N/A')} | "
-                    #     f"Batería={metricas_wmi.get('bateria_porcentaje', 'N/A')}% (Estado: {metricas_wmi.get('bateria_estado', 'N/A')})"
-                    # )
-                    
-                    # logging.info(mensaje_wmi)
-
-                    # Crea y registra un mensaje con las métricas de OHM
-                    # mensaje_ohm = (
-                    #     f"OHM CPU: {metricas_ohm.get('cpu_name', 'N/A')}, Load:{metricas_ohm.get('cpu_load_percent', 'N/A')} %, Power: Package:{metricas_ohm.get('cpu_power_package_watts', 'N/A')} W, Cores:{metricas_ohm.get('cpu_power_cores_watts', 'N/A')} W, Bus Speed:{metricas_ohm.get('cpu_clocks_mhz', 'N/A')} Mhz, Temperature:{metricas_ohm.get('cpu_temperatura_celsius', 'N/A')} ºC | "
-                    #     f"Memory: {metricas_ohm.get('ram_name', 'N/A')}, {metricas_ohm.get('ram_load_percent', 'N/A')} %, Used:{metricas_ohm.get('ram_load_used_gb', 'N/A')} GB, Free:{metricas_ohm.get('ram_load_free_gb', 'N/A')} GB | "
-                    #     f"Disco Duro: {metricas_ohm.get('hdd_name', 'N/A')}, Used:{metricas_ohm.get('hdd_used_gb', 'N/A')} %"
-                    # )
-
-                    # logging.info(mensaje_ohm)
-
-                    # Loguea la lista de procesos según la condición de CPU
-                    # if metricas_psutil['cpu_percent'] > 95:
-                    #     logging.warning(f"ALERTA: Alto uso de CPU! Procesos en ejecución ({len(lista_procesos)} total):")
-                    #     # Limita la salida a 10 procesos para evitar logs demasiado grandes
-                    #     for i, proc in enumerate(lista_procesos[:10]):
-                    #         logging.warning(f"  - PID: {proc['pid']} | Nombre: {proc['name']}")
-                    # else:
-                    #     logging.info(f"Número de procesos en ejecución: {len(lista_procesos)}")
+                    # Se omiten los logs detallados que estaban comentados para mantener la concisión
+                
             except Exception as e:
                 logging.error(f"Error en el bucle principal: {e}")
             finally:
                 pythoncom.CoUninitialize()
 
-            time.sleep(self.monitor_interval)
+            win32event.WaitForSingleObject(self.hWaitStop, int(self.monitor_interval * 1000))
+
 
     def load_config(self):
         """

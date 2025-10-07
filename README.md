@@ -43,10 +43,13 @@ Puedes instalar las librerías una por una o todas juntas.
   pip install pyinstaller
   pip install cx_Freeze
   pip install pythonnet
+  pip install duckdb
+  pip install pandas
+  pip install pyarrow
   ```
 - **Instalar todas a la vez:**
   ```bash
-  pip install psutil wmi pywin32 pyinstaller cx_Freeze pythonnet
+  pip install psutil wmi pywin32 pyinstaller cx_Freeze pythonnet duckdb pandas pyarrow
   ```
 - **Instalar requerimientos:**
   ```bash

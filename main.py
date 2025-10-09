@@ -11,9 +11,12 @@ import sys
 import pythoncom
 from datetime import datetime
 # Importaciones de los módulos creados
+# Gestor de SQLite
 from sqlite.main_sqlite import DBManager
-# NUEVA IMPORTACIÓN: Gestor de Parquet con DuckDB
+# Gestor de Parquet con DuckDB
 from main_duckdb import ParquetManager
+# Libreria de obtención de metricas
+# Gestor de Psutil, WMI y OHM
 from libs.psutil.main_psutil import (
     obtener_metricas_psutil,
     obtener_lista_procesos
@@ -53,7 +56,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
         self.is_running = True
         self.log_file_name = "agente_monitoreo.log"
-        self.monitor_interval = 5
+        self.monitor_interval = 60
         self.open_hardware_monitor_handle = None
         # Variables para los gestores
         self.db_manager = None
@@ -93,7 +96,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
 
         # Obtiene la ruta base para los archivos de datos
         base_dir = _find_dir()
-        db_path = os.path.join(base_dir, "data", "monitoreo.db")
+        db_path = os.path.join(base_dir, "data", self.db_file_name)
         dll_path = os.path.join(base_dir, "libs", "ohm", "OpenHardwareMonitorLib.dll")
         
         # --- Configuración DuckDB/Parquet ---
@@ -134,26 +137,20 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                     metricas_combinadas['timestamp'] = datetime.now().isoformat()
                     metricas_combinadas['hostname'] = socket.gethostname()
                     
-                    # IMPORTANTE: Captura el username para la tabla info_maquina y métricas
-                    try:
-                        metricas_combinadas['username'] = os.getlogin()
-                    except:
-                        metricas_combinadas['username'] = 'N/A'
-
                     # Almacena las métricas en SQLite
                     self.db_manager.insert_metrics(metricas_combinadas)
                     self.db_manager.upsert_machine_info(metricas_combinadas)
                     
-                    # --- NUEVA FUNCIONALIDAD: Guardar a Parquet y Limpiar ---
+                    # --- Guardar a Parquet y Limpiar ---
                     if self.parquet_manager:
                         # 1. Guardar la métrica actual como archivo Parquet
                         self.parquet_manager.save_metrics_to_parquet(metricas_combinadas)
                         
                         # 2. Limpiar archivos Parquet antiguos (de más de 1 hora/60 minutos)
                         self.parquet_manager.clean_old_parquet_files()
-                    # --- FIN NUEVA FUNCIONALIDAD ---
 
-                    cpu_percent = metricas_combinadas.get('cpu_percent') or metricas_combinadas.get('cpu_freq_current_mhz') or 0
+                    # Adecuación de algunos datos
+                    cpu_percent = metricas_combinadas.get('cpu_percent') or metricas_combinadas.get('cpu_load_percent') or 0
                     ram_percent = metricas_combinadas.get('memoria_percent') or metricas_combinadas.get('ram_load_percent') or 0
                     ram_used = metricas_combinadas.get('memoria_usada_gb') or metricas_combinadas.get('ram_load_used_gb') or 0
                     ram_free = metricas_combinadas.get('memoria_libre_gb') or metricas_combinadas.get('ram_load_free_gb') or 0
@@ -184,8 +181,30 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                         f" | CPU Core W: {metricas_combinadas.get('cpu_power_cores_watts', 0)}"
                         f" | CPU Core W: {metricas_combinadas.get('cpu_clocks_mhz', 0)}"
                     )
-
+                    # Looging las metricas
                     logging.info(mensaje)
+
+                    # Lógica para combinar la Placa Base
+                    placa_base_fabricante = metricas_combinadas.get('placa_base_fabricante', 'Desconocido')
+                    placa_base_producto = metricas_combinadas.get('placa_base_producto', 'Desconocido')
+                    # Formato: Fabricante - Producto. Se elimina el separador si ambos son 'Desconocido'.
+                    if placa_base_fabricante == 'Desconocido' and placa_base_producto == 'Desconocido':
+                        placa_base_combined = 'Desconocido'
+                    else:
+                        placa_base_combined = f"{placa_base_fabricante} - {placa_base_producto}".replace("Desconocido - ", "").replace(" - Desconocido", "")
+                    # Crea el mensaje de información de la maquina
+                    mensaje_info = (
+                        f"Hostname: {metricas_combinadas.get('hostname', 'N/A')}"
+                        f" | User: {metricas_combinadas.get('username', 'N/A')}"
+                        f" | OS Name: {metricas_combinadas.get('os_name', 'Desconocido')}"
+                        f" | Motherboard Name: {placa_base_combined}"
+                        f" | Processor Name: {metricas_combinadas.get('procesador_nombre', 'Desconocido')}"
+                        f" - Cores: Logical: {metricas_combinadas.get('procesador_nucleos_logicos', 'N/A')}"
+                        f" / Physical: {metricas_combinadas.get('procesador_nucleos_fisicos', 'N/A')}"
+                        f" | OS Last Bot Up Time: {metricas_combinadas.get('os_last_boot_up_time', 'Desconocido')}"
+                    )
+                    # Looging las metricas info
+                    logging.info(mensaje_info)
 
             except Exception as e:
                 logging.error(f"Error en el bucle principal: {e}")
@@ -203,14 +222,16 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
             base_dir = _find_dir()
             config_path = os.path.join(base_dir, "configs", "config.ini")
             config.read(config_path)
-            self.monitor_interval = config.getint('AGENTE', 'intervalo_monitoreo', fallback=5)
+            self.monitor_interval = config.getint('AGENTE', 'intervalo_monitoreo', fallback=60)
             self.log_file_name = config.get('AGENTE', 'nombre_archivo_log', fallback='agente_monitoreo.log')
+            self.db_file_name = config.get('AGENTE', 'nombre_archivo_db', fallback='monitor_data.db')
             # Se podría añadir la configuración de retención aquí si fuera necesario
             # self.parquet_retention_minutes = config.getint('DUCKDB', 'retencion_minutos', fallback=60)
         except Exception as e:
             # En caso de error, usa valores por defecto
-            self.monitor_interval = 5
+            self.monitor_interval = 60
             self.log_file_name = "agente_monitoreo.log"
+            self.db_file_name = "monitoreo.db"
             logging.error(f"Error al leer la configuración. Usando valores por defecto. Error: {e}")
 
     def setup_logging(self):

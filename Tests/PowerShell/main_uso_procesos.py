@@ -3,21 +3,63 @@ import sys
 import json
 from pprint import pprint
 
-def get_process_stats_powershell():
+def sort_and_limit_processes(process_list, sort_by_key="CPU (s)"):
+    """
+    Ordena la lista de procesos por una clave específica (descendente) y devuelve 
+    los 10 procesos con los valores más altos.
+    
+    Args:
+        process_list (list): Lista de diccionarios de procesos.
+        sort_by_key (str): Clave por la cual ordenar (e.g., 'CPU (s)', 'PM (MB)').
+        
+    Returns:
+        list: Los 10 procesos principales (o menos, si hay menos de 10).
+    """
+    
+    # 1. Función clave para la ordenación
+    # Intenta convertir el valor a un número flotante para asegurar una ordenación numérica.
+    # Si la clave no existe o no es un número, usa 0 para evitar fallos.
+    def get_sort_value(process):
+        try:
+            # Algunas claves como 'Responding' son booleanas, por lo que las manejamos 
+            # de manera diferente o las excluimos de la ordenación numérica.
+            if sort_by_key in ['Responding']:
+                return process.get(sort_by_key, False)
+            
+            value = process.get(sort_by_key)
+            if value is not None:
+                # Intenta la conversión a float para ordenación numérica
+                return float(value)
+            return 0.0
+        except ValueError:
+            # Si el valor no es convertible a float (p.ej., una cadena de error), devuelve 0
+            return 0.0
+        except TypeError:
+            # Maneja None o tipos inesperados
+            return 0.0
+    
+    # 2. Ordena la lista de procesos
+    # Orden descendente (reverse=True) para mostrar los valores más altos primero.
+    try:
+        sorted_processes = sorted(process_list, key=get_sort_value, reverse=True)
+    except Exception as e:
+        print(f"⚠️ Advertencia: No se pudo ordenar por la clave '{sort_by_key}'. Error: {e}")
+        return process_list[:10]
+        
+    # 3. Limita a los 10 primeros resultados
+    return sorted_processes[:10]
+
+
+def get_process_stats_powershell(sort_key="CPU (s)"):
     """
     Ejecuta un comando de PowerShell para listar el consumo de recursos de los procesos,
-    formateando los valores de memoria en MB.
+    transforma la salida a JSON, la limpia, ordena y muestra los 10 principales.
     
-    La salida de PowerShell se fuerza a JSON usando 'ConvertTo-Json' para que 
-    Python pueda transformarla fácilmente en una lista de diccionarios.
-    
-    SOLUCIÓN ROBUSTA A UNICODEDECODEERROR: 
-    1. Se añade 'chcp 65001' al comando de PowerShell para forzar la página de códigos de la consola a UTF-8.
-    2. Se añade 'errors="replace"' en Python para manejar cualquier byte no UTF-8 residual sin fallar.
+    Args:
+        sort_key (str): Clave para ordenar los resultados (e.g., 'CPU (s)', 'PM (MB)').
     """
     
-    # Define el comando de PowerShell como una cadena multilinea
-    # NOTA: Se ha reemplazado 'Format-Table' por 'ConvertTo-Json -Compress'
+    # Define el comando de PowerShell para obtener datos JSON
     command = """
     chcp 65001 > $null; 
     $OutputEncoding = [System.Text.Encoding]::UTF8;
@@ -31,11 +73,11 @@ def get_process_stats_powershell():
     """
     
     try:
-        # Ejecuta el comando de PowerShell usando subprocess.run
+        # 1. Ejecuta el comando de PowerShell
         result = subprocess.run(
             [
                 "powershell", 
-                "-NoProfile", # Recomendado para iniciar PowerShell más rápido
+                "-NoProfile", 
                 "-Command", 
                 command
             ], 
@@ -43,47 +85,42 @@ def get_process_stats_powershell():
             text=True, 
             check=True,
             encoding='utf-8', 
-            errors='replace' # Mitigación de fallos de decodificación
+            errors='replace'
         )
         
-        # La salida ahora es una cadena JSON
         json_output = result.stdout.strip()
         
         if not json_output:
-             print("⚠️ Advertencia: La salida de PowerShell está vacía. No se encontraron procesos o hubo un problema de serialización.")
+             print("⚠️ Advertencia: La salida de PowerShell está vacía. No se encontraron procesos.")
              return
 
-        # Carga el JSON a una lista de diccionarios de Python
-        # Cada elemento de la lista representa un proceso.
+        # 2. Carga el JSON a una lista de diccionarios
         process_list = json.loads(json_output)
         
-        # --- LÓGICA DE POST-PROCESAMIENTO SOLICITADA ---
-        # Si 'Product' es None o vacío, se reemplaza con 'ProcessName'.
+        # 3. Lógica de Post-procesamiento (Limpieza de 'Product')
         for process in process_list:
             product_value = process.get('Product')
             process_name = process.get('ProcessName', 'N/A')
             
-            # Comprueba si el valor del producto es None O una cadena vacía/sólo espacios.
             if product_value is None or (isinstance(product_value, str) and not product_value.strip()):
                 process['Product'] = process_name
-        # -----------------------------------------------
-
-        # Imprime la lista de diccionarios usando pprint para una mejor visualización estructurada
-        print(f"📊 Datos de procesos transformados ({len(process_list)} procesos encontrados):")
-        pprint(process_list, indent=4)
         
-        if process_list:
-            print("\n✅ Estructura del primer proceso (ejemplo):")
-            pprint(process_list[0], indent=4)
+        # 4. Ordena y limita los resultados
+        top_processes = sort_and_limit_processes(process_list, sort_key)
+
+        # 5. Imprime el resultado final
+        print(f"🚀 Top 10 procesos ordenados por '{sort_key}' (Descendente):")
+        pprint(top_processes, indent=4)
+        
+        # if top_processes:
+        #     print("\n✅ Estructura del proceso principal (ejemplo):")
+        #     pprint(top_processes[0], indent=4)
         
     except FileNotFoundError:
-        # Maneja el error si PowerShell no se encuentra
         print("❌ Error: PowerShell no se encuentra en el sistema.")
-        print("Asegúrate de que PowerShell esté instalado y en tu PATH.")
         sys.exit(1)
         
     except subprocess.CalledProcessError as e:
-        # Maneja los errores si el comando de PowerShell falla
         print("❌ Error al ejecutar el comando de PowerShell.")
         print(f"Código de retorno: {e.returncode}")
         error_output = e.stderr.strip() if e.stderr else "Sin salida de error adicional."
@@ -91,16 +128,16 @@ def get_process_stats_powershell():
         sys.exit(1)
         
     except json.JSONDecodeError as e:
-        # Maneja errores si la salida no es JSON válida (p.ej., si PowerShell arroja un error antes)
         print("❌ Error de decodificación JSON.")
         print(f"Detalles: {e}")
         print(f"Salida bruta que causó el error:\n{result.stdout.strip()[:500]}...")
         sys.exit(1)
         
     except Exception as e:
-        # Maneja cualquier otro tipo de error inesperado
         print(f"❌ Ocurrió un error inesperado: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
-    get_process_stats_powershell()
+    # Puedes cambiar la clave de ordenación aquí:
+    # Opciones válidas: 'CPU (s)', 'PM (MB)', 'WS (MB)', 'VM (MB)', 'StartTime', 'Id', 'ProcessName', etc.
+    get_process_stats_powershell(sort_key="CPU (s)")

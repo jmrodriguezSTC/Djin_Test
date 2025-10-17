@@ -1,82 +1,147 @@
-# Djin_Test
+# Aifred_djin
 
-Este repositorio contiene pruebas para librerías y funcionalidades clave del proyecto **Djin**.
+Repo que contiene el código del proceso que corre en memoria para capturar la telemetria del PC
 
----
+## Gestión de Entorno Virtual
 
-## Comandos Útiles
-
-Ejecuta los siguientes comandos en la **línea de comandos (CMD)** con privilegios de **administrador**.
-
-### Gestión de Entorno Virtual
-
-- **Activar entorno:**
-  ```bash
-  .venv\Scripts\activate
-  ```
-- **Desactivar entorno:**
-  ```bash
-  deactivate
-  ```
 - **Crear nuevo entorno:**
+
   ```bash
   python -m venv .venv
   ```
 
-### Requerimientos del Entorno
+- **Activar entorno:**
 
-- **Guardar requerimientos:**
-
-```bash
-pip freeze > requirements.txt
-```
-
-### Instalación de Librerías
-
-Puedes instalar las librerías una por una o todas juntas.
-
-- **Instalar individualmente:**
   ```bash
-  pip install psutil
-  pip install wmi
-  pip install pywin32
-  pip install pyinstaller
-  pip install cx_Freeze
-  pip install pythonnet
+  .venv\Scripts\activate
   ```
-- **Instalar todas a la vez:**
+
+- **Desactivar entorno:**
+
   ```bash
-  pip install psutil wmi pywin32 pyinstaller cx_Freeze pythonnet
+  deactivate
   ```
+
+- **Eliminar entorno**
+
+  Eliminar la carpeta `.venv/`
+
+## Requerimientos y Librerias
+
+- **Actualizar requerimientos**
+
+  ```bash
+  pip freeze > requirements.txt
+  ```
+
 - **Instalar requerimientos:**
+
   ```bash
   pip install -r requirements.txt
   ```
 
-### Creación y Gestión de Servicios
+- **Instalar librerias individualmente:**
 
-Estos comandos te ayudarán a construir y gestionar el servicio del proyecto.
-
-- **Construir ejecutable:**
   ```bash
-  python setup.py build
+  pip install psutil
   ```
-- **Instalar servicio:**
+
   ```bash
-  build/Pruebas/exe.win-amd64-3.13/PythonMonitorAgent.exe --startup auto install
+  pip install wmi
+  ```
+
+  ```bash
+  pip install pywin32
+  ```
+
+  ```bash
+  pip install cx_Freeze
+  ```
+
+  ```bash
+  pip install pythonnet
+  ```
+
+  ```bash
+  pip install pandas
+  ```
+
+  ```bash
+  pip install duckdb
+  ```
+
+## Ejecución
+
+- **Ejecución rápida**
+
+  ```bash
+  python main.py
+  ```
+
+## Gestión de Servicios
+
+Estos comandos te ayudarán a instalar y gestionar el servicio del proyecto.
+
+### Ejecución en root (Deprecated)
+
+- **Instalar/actualizar servicio:**
+  ```bash
+  python main.py install
   ```
 - **Iniciar servicio:**
   ```bash
-  net start "PMA_v1.0"
+  python main.py start
   ```
 - **Detener servicio:**
   ```bash
-  net stop "PMA_v1.0"
+  python main.py stop
   ```
 - **Eliminar servicio**
   ```bash
-  sc delete "my_service"
+  python main.py remove
   ```
+
+### Ejecución en otro directorio
+
+- **Construir ejecutable con dependencias:**
+
+  ```bash
+  python setup.py build
+  ```
+
+- **Instalar/actualizar servicio**
+
+  Ir al directorio donde este el ejecutable con el cmd en administrador y ejecutar:
+
+  - _Solo intalación/actualización:_
+
+    ```bash
+    PythonMonitorAgent.exe install
+    ```
+
+  - _Intalación/actualización con auto inicio:_
+
+    ```bash
+    PythonMonitorAgent.exe --startup auto install
+    ```
+
+  - _Iniciar servicio:_
+
+    ```bash
+    net start "name_service"
+    ```
+
+  - _Detener servicio:_
+
+    ```bash
+    net stop "name_service"
+    ```
+
+  - _Eliminar servicio_
+
+    ```bash
+    sc delete "name_service"
+    ```
 
 ---
 

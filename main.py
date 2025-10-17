@@ -11,7 +11,12 @@ import sys
 import pythoncom
 from datetime import datetime
 # Importaciones de los módulos creados
-from main_duckdb import DBManager
+# Gestor de SQLite
+from sqlite.main_sqlite import DBManager
+# Gestor de Parquet con DuckDB
+from main_duckdb import ParquetManager
+# Libreria de obtención de metricas
+# Gestor de Psutil, WMI y OHM
 from libs.psutil.main_psutil import (
     obtener_metricas_psutil,
     obtener_lista_procesos
@@ -51,8 +56,12 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
         self.is_running = True
         self.log_file_name = "agente_monitoreo.log"
-        self.monitor_interval = 5
+        self.monitor_interval = 60
         self.open_hardware_monitor_handle = None
+        # Variables para los gestores
+        self.db_manager = None
+        self.parquet_manager = None
+        self.parquet_retention_minutes = 60 # Tiempo de retención por defecto
 
     def SvcStop(self):
         """
@@ -61,6 +70,9 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
         self.is_running = False
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.hWaitStop)
+        # Cierra la conexión de la base de datos usando el Singleton
+        if self.db_manager:
+            self.db_manager.close_connection()
 
     def SvcDoRun(self):
         """
@@ -75,7 +87,7 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
 
     def main_loop(self):
         """
-        Bucle principal del agente de monitoreo.
+        Bucle principal del agente de monitoreo, ahora con gestión de Parquet.
         """
         self.load_config()
         self.setup_logging()
@@ -84,12 +96,19 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
 
         # Obtiene la ruta base para los archivos de datos
         base_dir = _find_dir()
-        # Se pasa la ruta de la DB principal
-        db_path = os.path.join(base_dir, "data", "monitoreo.duckdb")
+        db_path = os.path.join(base_dir, "data", self.db_file_name)
         dll_path = os.path.join(base_dir, "libs", "ohm", "OpenHardwareMonitorLib.dll")
+        
+        # --- Configuración DuckDB/Parquet ---
+        parquet_dir = os.path.join(base_dir, "data", "metricas")
+        # Obtiene la instancia del Singleton para Parquet.
+        self.parquet_manager = ParquetManager(parquet_dir)
+        # Se establece el tiempo de retención (puede cargarse desde config.ini si se implementa allí)
+        self.parquet_manager.set_retention(self.parquet_retention_minutes)
+        # --- Fin Configuración DuckDB/Parquet ---
 
-        # Obtiene la instancia del Singleton. La ruta de cola es calculada internamente.
-        db_manager = DBManager(db_path)
+        # Obtiene la instancia del Singleton de SQLite.
+        self.db_manager = DBManager(db_path)
 
         # Inicializar el handle de OpenHardwareMonitor una sola vez
         try:
@@ -126,13 +145,20 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                     metricas_combinadas['timestamp'] = datetime.now().isoformat()
                     metricas_combinadas['hostname'] = socket.gethostname()
                     
-                    # Almacena las métricas usando la instancia Singleton.
-                    # Estos métodos ahora contienen la lógica de Fallback a Cola.
-                    db_manager.insert_metrics(metricas_combinadas)
-                    db_manager.upsert_machine_info(metricas_combinadas)
+                    # Almacena las métricas en SQLite
+                    self.db_manager.insert_metrics(metricas_combinadas)
+                    self.db_manager.upsert_machine_info(metricas_combinadas)
                     
-                    # ... (rest of logging logic, unchanged)
-                    cpu_percent = metricas_combinadas.get('cpu_percent') or metricas_combinadas.get('cpu_freq_current_mhz') or 0
+                    # --- Guardar a Parquet y Limpiar ---
+                    if self.parquet_manager:
+                        # 1. Guardar la métrica actual como archivo Parquet
+                        self.parquet_manager.save_metrics_to_parquet(metricas_combinadas)
+                        
+                        # 2. Limpiar archivos Parquet antiguos (de más de 1 hora/60 minutos)
+                        self.parquet_manager.clean_old_parquet_files()
+
+                    # Adecuación de algunos datos
+                    cpu_percent = metricas_combinadas.get('cpu_percent') or metricas_combinadas.get('cpu_load_percent') or 0
                     ram_percent = metricas_combinadas.get('memoria_percent') or metricas_combinadas.get('ram_load_percent') or 0
                     ram_used = metricas_combinadas.get('memoria_usada_gb') or metricas_combinadas.get('ram_load_used_gb') or 0
                     ram_free = metricas_combinadas.get('memoria_libre_gb') or metricas_combinadas.get('ram_load_free_gb') or 0
@@ -141,8 +167,8 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                     # Crea y registra un mensaje con las métricas combinadas
                     mensaje = (
                         f"Hostname: {metricas_combinadas.get('hostname', 'N/A')}"
-                        f" | User: {metricas_combinadas.get('username', 'N/A')} | "
-                        f"CPU %: {cpu_percent}"
+                        f" | User: {metricas_combinadas.get('username', 'N/A')}"
+                        f" | CPU %: {cpu_percent}"
                         f" | CPU MHz: {metricas_combinadas.get('cpu_freq_current_mhz', 0)}"
                         f" | CPU Bus MHz: {metricas_combinadas.get('cpu_clocks_mhz', 0)}"
                         f" | RAM %: {ram_percent}"
@@ -163,51 +189,31 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
                         f" | CPU Core W: {metricas_combinadas.get('cpu_power_cores_watts', 0)}"
                         f" | CPU Core W: {metricas_combinadas.get('cpu_clocks_mhz', 0)}"
                     )
-
+                    # Looging las metricas
                     logging.info(mensaje)
 
-                    # Crea y registra un mensaje con las métricas de psutil
-                    # mensaje_psutil = (
-                    #     f"CPU: {metricas_psutil['cpu_percent']}%, Cores: Logical[{metricas_psutil['cpu_core_logical']}] Physical[{metricas_psutil['cpu_core_physical']}], Freq: Current[{metricas_psutil['cpu_freq_current_mhz']:.2f}Mhz], Min[{metricas_psutil['cpu_freq_min_mhz']:.2f}Mhz], Max[{metricas_psutil['cpu_freq_max_mhz']:.2f}Mhz] | "
-                    #     f"RAM: {metricas_psutil['memoria_percent']}% ({metricas_psutil['memoria_usada_gb']}/{metricas_psutil['memoria_total_gb']} GB, Free:{metricas_psutil['memoria_libre_gb']} GB) | "
-                    #     f"Swap: {metricas_psutil['swap_percent']}% ({metricas_psutil['swap_usado_gb']}/{metricas_psutil['swap_total_gb']} GB) | "
-                    #     f"Disco C: {metricas_psutil['disco_percent']}% ({metricas_psutil['disco_usado_gb']}/{metricas_psutil['disco_total_gb']} GB, Free:{metricas_psutil['disco_libre_gb']} GB) | "
-                    #     f"Red (Bytes): Enviados={metricas_psutil['red_bytes_enviados']}, Recibidos={metricas_psutil['red_bytes_recibidos']}"
-                    # )
-                    
-                    # logging.info(mensaje_psutil)
+                    # Lógica para combinar la Placa Base
+                    placa_base_fabricante = metricas_combinadas.get('placa_base_fabricante', 'Desconocido')
+                    placa_base_producto = metricas_combinadas.get('placa_base_producto', 'Desconocido')
+                    # Formato: Fabricante - Producto. Se elimina el separador si ambos son 'Desconocido'.
+                    if placa_base_fabricante == 'Desconocido' and placa_base_producto == 'Desconocido':
+                        placa_base_combined = 'Desconocido'
+                    else:
+                        placa_base_combined = f"{placa_base_fabricante} - {placa_base_producto}".replace("Desconocido - ", "").replace(" - Desconocido", "")
+                    # Crea el mensaje de información de la maquina
+                    mensaje_info = (
+                        f"Hostname: {metricas_combinadas.get('hostname', 'N/A')}"
+                        f" | User: {metricas_combinadas.get('username', 'N/A')}"
+                        f" | OS Name: {metricas_combinadas.get('os_name', 'Desconocido')}"
+                        f" | Motherboard Name: {placa_base_combined}"
+                        f" | Processor Name: {metricas_combinadas.get('procesador_nombre', 'Desconocido')}"
+                        f" - Cores: Logical: {metricas_combinadas.get('procesador_nucleos_logicos', 'N/A')}"
+                        f" / Physical: {metricas_combinadas.get('procesador_nucleos_fisicos', 'N/A')}"
+                        f" | OS Last Bot Up Time: {metricas_combinadas.get('os_last_boot_up_time', 'Desconocido')}"
+                    )
+                    # Looging las metricas info
+                    logging.info(mensaje_info)
 
-                    # Crea y registra un mensaje con las métricas de WMI
-                    # mensaje_wmi = (
-                    #     f"WMI: OS={metricas_wmi.get('os_name', 'N/A')}, Arquitecture:{metricas_wmi.get('os_architecture', 'N/A')}, Serial Number:{metricas_wmi.get('os_serial_number', 'N/A')}, Last Boost:{metricas_wmi.get('os_last_boot_up_time', 'N/A')} | "
-                    #     f"Placa Base={metricas_wmi.get('placa_base_producto', 'N/A')}, Fabricante:{metricas_wmi.get('placa_base_fabricante', 'N/A')}, Serial Number:{metricas_wmi.get('placa_base_numero_serie', 'N/A')} | "
-                    #     f"Procesador={metricas_wmi.get('procesador_nombre', 'N/A')},Cores: Logical={metricas_wmi.get('procesador_nucleos_logicos', 'N/A')}, Physical={metricas_wmi.get('procesador_nucleos_fisicos', 'N/A')} | "
-                    #     f"Batería={metricas_wmi.get('bateria_porcentaje', 'N/A')}% (Estado: {metricas_wmi.get('bateria_estado', 'N/A')})"
-                    # )
-                    
-                    # logging.info(mensaje_wmi)
-
-                    # Crea y registra un mensaje con las métricas de OHM
-                    # mensaje_ohm = (
-                    #     f"OHM CPU: {metricas_ohm.get('cpu_name', 'N/A')}, Load:{metricas_ohm.get('cpu_load_percent', 'N/A')} %, Power: Package:{metricas_ohm.get('cpu_power_package_watts', 'N/A')} W, Cores:{metricas_ohm.get('cpu_power_cores_watts', 'N/A')} W, Bus Speed:{metricas_ohm.get('cpu_clocks_mhz', 'N/A')} Mhz, Temperature:{metricas_ohm.get('cpu_temperatura_celsius', 'N/A')} ºC | "
-                    #     f"Memory: {metricas_ohm.get('ram_name', 'N/A')}, {metricas_ohm.get('ram_load_percent', 'N/A')} %, Used:{metricas_ohm.get('ram_load_used_gb', 'N/A')} GB, Free:{metricas_ohm.get('ram_load_free_gb', 'N/A')} GB | "
-                    #     f"Disco Duro: {metricas_ohm.get('hdd_name', 'N/A')}, Used:{metricas_ohm.get('hdd_used_gb', 'N/A')} %"
-                    # )
-
-                    # logging.info(mensaje_ohm)
-
-                    # Loguea la lista de procesos según la condición de CPU
-                    # if metricas_psutil['cpu_percent'] > 95:
-                    #     logging.warning(f"ALERTA: Alto uso de CPU! Procesos en ejecución ({len(lista_procesos)} total):")
-                    #     # Limita la salida a 10 procesos para evitar logs demasiado grandes
-                    #     for i, proc in enumerate(lista_procesos[:10]):
-                    #         logging.warning(f"  - PID: {proc['pid']} | Nombre: {proc['name']}")
-                    # else:
-                    #     logging.info(f"Número de procesos en ejecución: {len(lista_procesos)}")
-
-                    # Los bloques de logging de psutil, wmi y ohm se mantienen comentados
-                    # para evitar una salida excesivamente verbosa, según el código original.
-                    
             except Exception as e:
                 logging.error(f"Error en el bucle principal: {e}")
             finally:
@@ -224,12 +230,16 @@ class PythonMonitorService(win32serviceutil.ServiceFramework):
             base_dir = _find_dir()
             config_path = os.path.join(base_dir, "configs", "config.ini")
             config.read(config_path)
-            self.monitor_interval = config.getint('AGENTE', 'intervalo_monitoreo', fallback=5)
+            self.monitor_interval = config.getint('AGENTE', 'intervalo_monitoreo', fallback=60)
             self.log_file_name = config.get('AGENTE', 'nombre_archivo_log', fallback='agente_monitoreo.log')
+            self.db_file_name = config.get('AGENTE', 'nombre_archivo_db', fallback='monitor_data.db')
+            # Se podría añadir la configuración de retención aquí si fuera necesario
+            # self.parquet_retention_minutes = config.getint('DUCKDB', 'retencion_minutos', fallback=60)
         except Exception as e:
             # En caso de error, usa valores por defecto
-            self.monitor_interval = 5
+            self.monitor_interval = 60
             self.log_file_name = "agente_monitoreo.log"
+            self.db_file_name = "monitoreo.db"
             logging.error(f"Error al leer la configuración. Usando valores por defecto. Error: {e}")
 
     def setup_logging(self):
